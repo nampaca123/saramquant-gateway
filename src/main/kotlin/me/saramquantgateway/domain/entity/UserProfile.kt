@@ -40,7 +40,7 @@ class UserProfile(
         joinColumns = [JoinColumn(name = "user_profile_id")]
     )
     @Enumerated(EnumType.STRING)
-    @Column(name = "market", columnDefinition = "market_type")
+    @Column(name = "market", nullable = false, columnDefinition = "market_type")
     var preferredMarkets: MutableSet<Market> = mutableSetOf(),
 
     @Column(name = "created_at", nullable = false, updatable = false)
