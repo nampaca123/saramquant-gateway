@@ -20,6 +20,7 @@ dependencies {
     implementation("org.jetbrains.kotlin:kotlin-reflect")
 
     runtimeOnly("org.postgresql:postgresql")
+    implementation("me.paulschwarz:spring-dotenv:4.0.0")
 
     implementation("org.springframework:spring-webflux")
 }
