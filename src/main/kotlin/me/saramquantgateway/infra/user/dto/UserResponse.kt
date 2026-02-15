@@ -1,7 +1,8 @@
 package me.saramquantgateway.infra.user.dto
 
-import me.saramquantgateway.domain.entity.User
-import me.saramquantgateway.domain.enum.OAuthProvider
+import me.saramquantgateway.domain.entity.user.User
+import me.saramquantgateway.domain.enum.auth.OAuthProvider
+import me.saramquantgateway.domain.enum.user.UserRole
 import java.util.UUID
 
 data class UserResponse(
@@ -9,6 +10,7 @@ data class UserResponse(
     val email: String,
     val name: String,
     val provider: OAuthProvider,
+    val role: UserRole,
     val profile: ProfileResponse?,
 ) {
     companion object {
@@ -17,6 +19,7 @@ data class UserResponse(
             email = user.email,
             name = user.name,
             provider = user.provider,
+            role = user.role,
             profile = profile,
         )
     }

@@ -1,7 +1,7 @@
 package me.saramquantgateway.infra.user.service
 
-import me.saramquantgateway.domain.entity.User
-import me.saramquantgateway.domain.enum.OAuthProvider
+import me.saramquantgateway.domain.entity.user.User
+import me.saramquantgateway.domain.enum.auth.OAuthProvider
 import me.saramquantgateway.infra.jwt.lib.JwtProvider
 import me.saramquantgateway.infra.jwt.service.RefreshTokenService
 import me.saramquantgateway.infra.oauth.lib.GoogleOAuthClient
@@ -50,7 +50,7 @@ class AuthService(
             }
         }
 
-        val accessToken = jwtProvider.generateAccessToken(user.id, user.email, user.provider)
+        val accessToken = jwtProvider.generateAccessToken(user.id, user.email, user.provider, user.role)
         val refreshToken = jwtProvider.generateRefreshToken(user.id)
         refreshTokenService.save(user.id, refreshToken)
 
@@ -64,7 +64,7 @@ class AuthService(
         val user = userService.findById(userId) ?: throw RefreshTokenService.InvalidRefreshTokenException()
 
         val newRefreshToken = refreshTokenService.rotate(rawRefreshToken)
-        val newAccessToken = jwtProvider.generateAccessToken(user.id, user.email, user.provider)
+        val newAccessToken = jwtProvider.generateAccessToken(user.id, user.email, user.provider, user.role)
 
         return AuthResult(newAccessToken, newRefreshToken, null)
     }

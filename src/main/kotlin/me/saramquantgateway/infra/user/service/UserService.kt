@@ -1,10 +1,10 @@
 package me.saramquantgateway.infra.user.service
 
-import me.saramquantgateway.domain.entity.User
-import me.saramquantgateway.domain.entity.UserProfile
-import me.saramquantgateway.domain.enum.OAuthProvider
-import me.saramquantgateway.domain.repository.UserProfileRepository
-import me.saramquantgateway.domain.repository.UserRepository
+import me.saramquantgateway.domain.entity.user.User
+import me.saramquantgateway.domain.entity.user.UserProfile
+import me.saramquantgateway.domain.enum.auth.OAuthProvider
+import me.saramquantgateway.domain.repository.user.UserProfileRepository
+import me.saramquantgateway.domain.repository.user.UserRepository
 import me.saramquantgateway.infra.oauth.dto.OAuthUserInfo
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional

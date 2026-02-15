@@ -1,7 +1,7 @@
 package me.saramquantgateway.infra.jwt.service
 
-import me.saramquantgateway.domain.entity.RefreshToken
-import me.saramquantgateway.domain.repository.RefreshTokenRepository
+import me.saramquantgateway.domain.entity.auth.RefreshToken
+import me.saramquantgateway.domain.repository.auth.RefreshTokenRepository
 import me.saramquantgateway.infra.jwt.lib.JwtProvider
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service

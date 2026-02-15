@@ -1,6 +1,6 @@
 package me.saramquantgateway.infra.user.service
 
-import me.saramquantgateway.domain.repository.UserProfileRepository
+import me.saramquantgateway.domain.repository.user.UserProfileRepository
 import me.saramquantgateway.infra.user.dto.ProfileResponse
 import me.saramquantgateway.infra.user.dto.ProfileUpdateRequest
 import org.springframework.stereotype.Service

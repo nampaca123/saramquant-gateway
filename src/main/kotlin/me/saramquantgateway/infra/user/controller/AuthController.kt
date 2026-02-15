@@ -1,6 +1,6 @@
 package me.saramquantgateway.infra.user.controller
 
-import me.saramquantgateway.domain.enum.OAuthProvider
+import me.saramquantgateway.domain.enum.auth.OAuthProvider
 import me.saramquantgateway.infra.jwt.service.RefreshTokenService
 import me.saramquantgateway.infra.security.CookieUtil
 import me.saramquantgateway.infra.user.service.AuthService

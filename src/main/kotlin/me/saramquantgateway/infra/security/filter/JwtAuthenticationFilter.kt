@@ -6,6 +6,7 @@ import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken
+import org.springframework.security.core.authority.SimpleGrantedAuthority
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.stereotype.Component
 import org.springframework.util.AntPathMatcher
@@ -37,7 +38,9 @@ class JwtAuthenticationFilter(
         if (token != null) {
             val claims = jwtProvider.validateToken(token)
             if (claims != null) {
-                val auth = UsernamePasswordAuthenticationToken(claims.subject, null, emptyList())
+                val role = claims["role"] as? String ?: "STANDARD"
+                val authorities = listOf(SimpleGrantedAuthority("ROLE_$role"))
+                val auth = UsernamePasswordAuthenticationToken(claims.subject, null, authorities)
                 SecurityContextHolder.getContext().authentication = auth
             } else {
                 cookieUtil.clearAll(response)
