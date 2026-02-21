@@ -1,12 +1,12 @@
-package me.saramquantgateway.infra.ai.lib
+package me.saramquantgateway.infra.llm.lib
 
-import me.saramquantgateway.infra.ai.config.AiProperties
+import me.saramquantgateway.infra.llm.config.LlmProperties
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Component
 
 @Component
 class LlmRouter(
-    private val props: AiProperties,
+    private val props: LlmProperties,
     private val anthropic: AnthropicClient,
     private val openai: OpenAiClient,
 ) {

@@ -1,17 +1,17 @@
-package me.saramquantgateway.feature.ai.service
+package me.saramquantgateway.feature.llm.service
 
-import me.saramquantgateway.domain.repository.ai.AiUsageLogRepository
-import me.saramquantgateway.feature.ai.dto.AiUsageResponse
-import me.saramquantgateway.infra.ai.config.AiProperties
+import me.saramquantgateway.domain.repository.llm.LlmUsageLogRepository
+import me.saramquantgateway.feature.llm.dto.LlmUsageResponse
+import me.saramquantgateway.infra.llm.config.LlmProperties
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 import java.util.UUID
 
 @Service
-class AiUsageService(
-    private val repo: AiUsageLogRepository,
-    private val props: AiProperties,
+class LlmUsageService(
+    private val repo: LlmUsageLogRepository,
+    private val props: LlmProperties,
 ) {
     @Transactional
     fun checkAndIncrement(userId: UUID): Int {
@@ -20,10 +20,10 @@ class AiUsageService(
         return log?.count ?: 1
     }
 
-    fun remaining(userId: UUID): AiUsageResponse {
+    fun remaining(userId: UUID): LlmUsageResponse {
         val log = repo.findByUserIdAndUsageDate(userId, LocalDate.now())
         val used = log?.count ?: 0
-        return AiUsageResponse(used, props.dailyLimit, LocalDate.now().toString())
+        return LlmUsageResponse(used, props.dailyLimit, LocalDate.now().toString())
     }
 
     fun isWithinLimit(userId: UUID): Boolean {

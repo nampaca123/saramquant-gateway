@@ -1,12 +1,12 @@
-package me.saramquantgateway.infra.ai.lib
+package me.saramquantgateway.infra.llm.lib
 
-import me.saramquantgateway.infra.ai.config.AiProperties
+import me.saramquantgateway.infra.llm.config.LlmProperties
 import org.springframework.http.MediaType
 import org.springframework.stereotype.Component
 import org.springframework.web.reactive.function.client.WebClient
 
 @Component
-class OpenAiClient(private val props: AiProperties) : LlmClient {
+class OpenAiClient(private val props: LlmProperties) : LlmClient {
 
     private val client: WebClient = WebClient.builder()
         .baseUrl("https://api.openai.com")

@@ -1,10 +1,10 @@
-package me.saramquantgateway.infra.ai.config
+package me.saramquantgateway.infra.llm.config
 
 import org.springframework.boot.context.properties.ConfigurationProperties
 import java.time.Duration
 
-@ConfigurationProperties(prefix = "app.ai")
-data class AiProperties(
+@ConfigurationProperties(prefix = "app.llm")
+data class LlmProperties(
     val claude: ProviderConfig,
     val openai: ProviderConfig,
     val stockModel: String = "claude-sonnet-4-6",

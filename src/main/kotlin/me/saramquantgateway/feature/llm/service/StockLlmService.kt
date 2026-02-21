@@ -1,10 +1,10 @@
-package me.saramquantgateway.feature.ai.service
+package me.saramquantgateway.feature.llm.service
 
 import me.saramquantgateway.domain.entity.stock.Stock
 import me.saramquantgateway.domain.enum.market.Country
 import me.saramquantgateway.domain.enum.market.Maturity
 import me.saramquantgateway.domain.enum.stock.Market
-import me.saramquantgateway.domain.repository.ai.StockAiAnalysisRepository
+import me.saramquantgateway.domain.repository.llm.StockLlmAnalysisRepository
 import me.saramquantgateway.domain.repository.factor.FactorExposureRepository
 import me.saramquantgateway.domain.repository.fundamental.StockFundamentalRepository
 import me.saramquantgateway.domain.repository.indicator.StockIndicatorRepository
@@ -13,11 +13,11 @@ import me.saramquantgateway.domain.repository.market.SectorAggregateRepository
 import me.saramquantgateway.domain.repository.riskbadge.RiskBadgeRepository
 import me.saramquantgateway.domain.repository.stock.DailyPriceRepository
 import me.saramquantgateway.domain.repository.stock.StockRepository
-import me.saramquantgateway.domain.entity.ai.StockAiAnalysis
-import me.saramquantgateway.feature.ai.dto.AiAnalysisResponse
+import me.saramquantgateway.domain.entity.llm.StockLlmAnalysis
+import me.saramquantgateway.feature.llm.dto.LlmAnalysisResponse
 import me.saramquantgateway.feature.stock.dto.*
-import me.saramquantgateway.infra.ai.config.AiProperties
-import me.saramquantgateway.infra.ai.lib.LlmRouter
+import me.saramquantgateway.infra.llm.config.LlmProperties
+import me.saramquantgateway.infra.llm.lib.LlmRouter
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.web.server.ResponseStatusException
@@ -29,8 +29,8 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 @Service
-class StockAiService(
-    private val analysisRepo: StockAiAnalysisRepository,
+class StockLlmService(
+    private val analysisRepo: StockLlmAnalysisRepository,
     private val stockRepo: StockRepository,
     private val priceRepo: DailyPriceRepository,
     private val indicatorRepo: StockIndicatorRepository,
@@ -41,18 +41,18 @@ class StockAiService(
     private val riskFreeRateRepo: RiskFreeRateRepository,
     private val promptBuilder: PromptBuilder,
     private val llmRouter: LlmRouter,
-    private val props: AiProperties,
+    private val props: LlmProperties,
 ) {
     private val inFlight = ConcurrentHashMap<String, CompletableFuture<String>>()
 
-    fun getCached(symbol: String, market: Market, preset: String, lang: String): AiAnalysisResponse? {
+    fun getCached(symbol: String, market: Market, preset: String, lang: String): LlmAnalysisResponse? {
         val stock = stockRepo.findBySymbolAndMarketAndIsActiveTrue(symbol, market) ?: return null
         val cached = analysisRepo.findByStockIdAndDateAndPresetAndLang(stock.id, LocalDate.now(), preset, lang)
             ?: return null
         return toResponse(cached, true)
     }
 
-    fun analyze(symbol: String, market: Market, preset: String, lang: String): AiAnalysisResponse {
+    fun analyze(symbol: String, market: Market, preset: String, lang: String): LlmAnalysisResponse {
         val stock = stockRepo.findBySymbolAndMarketAndIsActiveTrue(symbol, market)
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Stock not found")
         val today = LocalDate.now()
@@ -68,7 +68,7 @@ class StockAiService(
 
         try {
             val analysis = future.get(35, TimeUnit.SECONDS)
-            return AiAnalysisResponse(analysis, props.stockModel, false, AiAnalysisResponse.disclaimer(lang))
+            return LlmAnalysisResponse(analysis, props.stockModel, false, LlmAnalysisResponse.disclaimer(lang))
         } finally {
             inFlight.remove(cacheKey)
         }
@@ -80,7 +80,7 @@ class StockAiService(
         val result = llmRouter.complete(props.stockModel, system, user)
 
         analysisRepo.save(
-            StockAiAnalysis(
+            StockLlmAnalysis(
                 stockId = stock.id, date = today, preset = preset, lang = lang,
                 analysis = result, model = props.stockModel,
             )
@@ -154,11 +154,11 @@ class StockAiService(
         )
     }
 
-    private fun toResponse(entity: StockAiAnalysis, cached: Boolean): AiAnalysisResponse =
-        AiAnalysisResponse(
+    private fun toResponse(entity: StockLlmAnalysis, cached: Boolean): LlmAnalysisResponse =
+        LlmAnalysisResponse(
             analysis = entity.analysis,
             model = entity.model,
             cached = cached,
-            disclaimer = AiAnalysisResponse.disclaimer(entity.lang),
+            disclaimer = LlmAnalysisResponse.disclaimer(entity.lang),
         )
 }

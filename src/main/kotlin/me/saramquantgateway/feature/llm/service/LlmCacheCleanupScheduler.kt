@@ -1,6 +1,6 @@
-package me.saramquantgateway.feature.ai.service
+package me.saramquantgateway.feature.llm.service
 
-import me.saramquantgateway.domain.repository.ai.StockAiAnalysisRepository
+import me.saramquantgateway.domain.repository.llm.StockLlmAnalysisRepository
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import org.springframework.transaction.annotation.Transactional
@@ -8,7 +8,7 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 
 @Component
-class AiCacheCleanupScheduler(private val repo: StockAiAnalysisRepository) {
+class LlmCacheCleanupScheduler(private val repo: StockLlmAnalysisRepository) {
 
     @Scheduled(cron = "0 0 3 * * *")
     @Transactional

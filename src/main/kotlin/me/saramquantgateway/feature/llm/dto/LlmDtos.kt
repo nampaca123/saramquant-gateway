@@ -1,4 +1,4 @@
-package me.saramquantgateway.feature.ai.dto
+package me.saramquantgateway.feature.llm.dto
 
 data class StockAnalysisRequest(
     val symbol: String,
@@ -13,7 +13,7 @@ data class PortfolioAnalysisRequest(
     val lang: String = "ko",
 )
 
-data class AiAnalysisResponse(
+data class LlmAnalysisResponse(
     val analysis: String,
     val model: String,
     val cached: Boolean,
@@ -27,7 +27,7 @@ data class AiAnalysisResponse(
     }
 }
 
-data class AiUsageResponse(
+data class LlmUsageResponse(
     val used: Int,
     val limit: Int,
     val date: String,

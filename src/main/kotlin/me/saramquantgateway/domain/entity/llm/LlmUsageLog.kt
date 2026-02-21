@@ -1,12 +1,12 @@
-package me.saramquantgateway.domain.entity.ai
+package me.saramquantgateway.domain.entity.llm
 
 import jakarta.persistence.*
 import java.time.LocalDate
 import java.util.UUID
 
 @Entity
-@Table(name = "ai_usage_logs")
-class AiUsageLog(
+@Table(name = "llm_usage_logs")
+class LlmUsageLog(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0,

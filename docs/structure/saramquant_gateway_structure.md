@@ -20,9 +20,9 @@ saramquant-gateway/
     │   │   │   └── market/
     │   │   │       └── MaturityConverter.kt
     │   │   ├── entity/
-    │   │   │   ├── ai/
-    │   │   │   │   ├── AiUsageLog.kt       # 사용자별 일일 AI 호출 횟수 기록
-    │   │   │   │   └── StockAiAnalysis.kt  # 종목 AI 분석 결과 캐시
+    │   │   │   ├── llm/
+    │   │   │   │   ├── LlmUsageLog.kt       # 사용자별 일일 LLM 호출 횟수 기록
+    │   │   │   │   └── StockLlmAnalysis.kt  # 종목 LLM 분석 결과 캐시
     │   │   │   ├── auth/
     │   │   │   │   └── RefreshToken.kt     # Refresh Token (UUID, 만료일, 사용자 매핑)
     │   │   │   ├── factor/
@@ -71,9 +71,9 @@ saramquant-gateway/
     │   │   │       └── UserRole.kt            # STANDARD, ADMIN
     │   │   │
     │   │   └── repository/                    # JpaRepository 인터페이스 모음
-    │   │       ├── ai/
-    │   │       │   ├── AiUsageLogRepository.kt
-    │   │       │   └── StockAiAnalysisRepository.kt
+    │   │       ├── llm/
+    │   │       │   ├── LlmUsageLogRepository.kt
+    │   │       │   └── StockLlmAnalysisRepository.kt
     │   │       ├── auth/
     │   │       │   └── RefreshTokenRepository.kt
     │   │       ├── factor/
@@ -101,17 +101,17 @@ saramquant-gateway/
     │   │           └── UserRepository.kt
     │   │
     │   ├── feature/                           # 기능 단위 비즈니스 로직
-    │   │   ├── ai/
+    │   │   ├── llm/
     │   │   │   ├── controller/
-    │   │   │   │   └── AiAnalysisController.kt  # AI 분석 트리거, 캐시 조회, 사용량 조회
+    │   │   │   │   └── LlmAnalysisController.kt  # LLM 분석 트리거, 캐시 조회, 사용량 조회
     │   │   │   ├── service/
-    │   │   │   │   ├── AiCacheCleanupScheduler.kt  # 30일 이상 캐시 정기 삭제
-    │   │   │   │   ├── AiUsageService.kt           # 일별 AI 호출 횟수 관리 (원자적 증가)
-    │   │   │   │   ├── PortfolioAiService.kt       # 포트폴리오 LLM 분석
-    │   │   │   │   ├── PromptBuilder.kt            # KO/EN 프롬프트 빌더
-    │   │   │   │   └── StockAiService.kt           # 종목 LLM 분석 (thundering herd 방지 캐싱)
+    │   │   │   │   ├── LlmCacheCleanupScheduler.kt  # 30일 이상 캐시 정기 삭제
+    │   │   │   │   ├── LlmUsageService.kt           # 일별 LLM 호출 횟수 관리 (원자적 증가)
+    │   │   │   │   ├── PortfolioLlmService.kt       # 포트폴리오 LLM 분석
+    │   │   │   │   ├── PromptBuilder.kt             # KO/EN 프롬프트 빌더
+    │   │   │   │   └── StockLlmService.kt           # 종목 LLM 분석 (thundering herd 방지 캐싱)
     │   │   │   └── dto/
-    │   │   │       └── AiDtos.kt
+    │   │   │       └── LlmDtos.kt
     │   │   │
     │   │   ├── dashboard/
     │   │   │   ├── controller/
@@ -147,9 +147,9 @@ saramquant-gateway/
     │   │           └── StockDetailDtos.kt
     │   │
     │   └── infra/                             # 외부 시스템 연동
-    │       ├── ai/
+    │       ├── llm/
     │       │   ├── config/
-    │       │   │   └── AiProperties.kt            # LLM 모델명, API키, daily-limit 설정
+    │       │   │   └── LlmProperties.kt            # LLM 모델명, API키, daily-limit 설정
     │       │   └── lib/
     │       │       ├── AnthropicClient.kt          # Claude API 클라이언트
     │       │       ├── LlmClient.kt               # LLM 공통 인터페이스
@@ -260,18 +260,18 @@ JPA Entity, Enum, Repository 인터페이스만 포함한다. Spring 외 의존�
 
 | 기능 | 설명 |
 |------|------|
-| `ai` | LLM 종목·포트폴리오 분석 (캐싱, rate limiting, thundering herd 방지) |
+| `llm` | LLM 종목·포트폴리오 분석 (캐싱, rate limiting, thundering herd 방지) |
 | `dashboard` | 종목 스크리너 목록 (N+1 배치 조회) |
 | `portfolio` | 포트폴리오 CRUD + 매수/매도 (평균단가, 환율 처리) |
 | `simulation` | 몬테카를로 시뮬레이션 (Calc Server 프록시) |
-| `stock` | 종목 상세 (지표, 펀더멘털, 리스크뱃지, AI 분석 집계) |
+| `stock` | 종목 상세 (지표, 펀더멘털, 리스크뱃지, LLM 분석 집계) |
 
 ### `infra/`
 외부 시스템 연동 및 기반 설정. 각 하위 패키지는 하나의 외부 관심사를 담당한다.
 
 | 패키지 | 담당 |
 |--------|------|
-| `ai` | Claude / OpenAI LLM 클라이언트, fallback 라우터 |
+| `llm` | Claude / OpenAI LLM 클라이언트, fallback 라우터 |
 | `auth` | 회원가입 / 로그인 / 토큰 관리 API |
 | `connection` | Calc Server HTTP 클라이언트 |
 | `jwt` | RSA 키페어 기반 JWT 발급·검증, Refresh Token rotation |

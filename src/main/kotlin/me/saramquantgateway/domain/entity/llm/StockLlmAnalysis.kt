@@ -1,12 +1,12 @@
-package me.saramquantgateway.domain.entity.ai
+package me.saramquantgateway.domain.entity.llm
 
 import jakarta.persistence.*
 import java.time.Instant
 import java.time.LocalDate
 
 @Entity
-@Table(name = "stock_ai_analyses")
-class StockAiAnalysis(
+@Table(name = "stock_llm_analyses")
+class StockLlmAnalysis(
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     val id: Long = 0,

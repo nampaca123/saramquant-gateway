@@ -1,4 +1,4 @@
-package me.saramquantgateway.feature.ai.service
+package me.saramquantgateway.feature.llm.service
 
 import me.saramquantgateway.feature.stock.dto.FactorExposureSnapshot
 import me.saramquantgateway.feature.stock.dto.FundamentalSnapshot

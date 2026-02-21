@@ -9,7 +9,7 @@ data class StockDetailResponse(
     val fundamentals: FundamentalSnapshot?,
     val sectorComparison: SectorComparisonSnapshot?,
     val factorExposures: FactorExposureSnapshot?,
-    val aiAnalysis: CachedAiAnalysis?,
+    val llmAnalysis: CachedLlmAnalysis?,
 )
 
 data class StockHeader(
@@ -61,7 +61,7 @@ data class FactorExposureSnapshot(
     val volatilityZ: BigDecimal?, val qualityZ: BigDecimal?, val leverageZ: BigDecimal?,
 )
 
-data class CachedAiAnalysis(
+data class CachedLlmAnalysis(
     val preset: String,
     val lang: String,
     val analysis: String,

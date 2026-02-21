@@ -1,4 +1,4 @@
-package me.saramquantgateway.feature.ai.service
+package me.saramquantgateway.feature.llm.service
 
 import me.saramquantgateway.domain.enum.market.Country
 import me.saramquantgateway.domain.enum.market.Maturity
@@ -9,10 +9,10 @@ import me.saramquantgateway.domain.repository.market.SectorAggregateRepository
 import me.saramquantgateway.domain.repository.portfolio.PortfolioHoldingRepository
 import me.saramquantgateway.domain.repository.riskbadge.RiskBadgeRepository
 import me.saramquantgateway.domain.repository.stock.StockRepository
-import me.saramquantgateway.feature.ai.dto.AiAnalysisResponse
+import me.saramquantgateway.feature.llm.dto.LlmAnalysisResponse
 import me.saramquantgateway.feature.portfolio.service.PortfolioService
-import me.saramquantgateway.infra.ai.config.AiProperties
-import me.saramquantgateway.infra.ai.lib.LlmRouter
+import me.saramquantgateway.infra.llm.config.LlmProperties
+import me.saramquantgateway.infra.llm.lib.LlmRouter
 import me.saramquantgateway.infra.connection.CalcServerClient
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
@@ -20,7 +20,7 @@ import java.math.RoundingMode
 import java.util.UUID
 
 @Service
-class PortfolioAiService(
+class PortfolioLlmService(
     private val portfolioService: PortfolioService,
     private val holdingRepo: PortfolioHoldingRepository,
     private val stockRepo: StockRepository,
@@ -32,17 +32,17 @@ class PortfolioAiService(
     private val calcClient: CalcServerClient,
     private val promptBuilder: PromptBuilder,
     private val llmRouter: LlmRouter,
-    private val props: AiProperties,
+    private val props: LlmProperties,
 ) {
 
-    fun analyze(portfolioId: Long, userId: UUID, preset: String, lang: String): AiAnalysisResponse {
+    fun analyze(portfolioId: Long, userId: UUID, preset: String, lang: String): LlmAnalysisResponse {
         val portfolio = portfolioService.verifyOwnership(portfolioId, userId)
         val holdings = holdingRepo.findByPortfolioId(portfolioId)
         if (holdings.isEmpty()) {
-            return AiAnalysisResponse(
+            return LlmAnalysisResponse(
                 analysis = if (lang == "en") "No holdings in this portfolio." else "포트폴리오에 보유 종목이 없습니다.",
                 model = props.portfolioModel, cached = false,
-                disclaimer = AiAnalysisResponse.disclaimer(lang),
+                disclaimer = LlmAnalysisResponse.disclaimer(lang),
             )
         }
 
@@ -101,9 +101,9 @@ class PortfolioAiService(
         val (system, user) = promptBuilder.buildPortfolioPrompt(data, preset, lang)
         val result = llmRouter.complete(props.portfolioModel, system, user)
 
-        return AiAnalysisResponse(
+        return LlmAnalysisResponse(
             analysis = result, model = props.portfolioModel,
-            cached = false, disclaimer = AiAnalysisResponse.disclaimer(lang),
+            cached = false, disclaimer = LlmAnalysisResponse.disclaimer(lang),
         )
     }
 }
