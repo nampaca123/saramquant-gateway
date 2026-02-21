@@ -1,0 +1,83 @@
+package me.saramquantgateway.feature.portfolio.controller
+
+import me.saramquantgateway.feature.portfolio.dto.BuyRequest
+import me.saramquantgateway.feature.portfolio.dto.SellRequest
+import me.saramquantgateway.feature.portfolio.service.PortfolioService
+import me.saramquantgateway.infra.connection.CalcServerClient
+import org.springframework.http.HttpStatus
+import org.springframework.http.ResponseEntity
+import org.springframework.security.core.context.SecurityContextHolder
+import org.springframework.web.bind.annotation.*
+import java.util.UUID
+
+@RestController
+@RequestMapping("/api/portfolios")
+class PortfolioController(
+    private val portfolioService: PortfolioService,
+    private val calcClient: CalcServerClient,
+) {
+
+    @GetMapping
+    fun list(): ResponseEntity<Any> {
+        val userId = currentUserId()
+        return ResponseEntity.ok(portfolioService.getPortfolios(userId))
+    }
+
+    @GetMapping("/{id}")
+    fun detail(@PathVariable id: Long): ResponseEntity<Any> {
+        val userId = currentUserId()
+        return ResponseEntity.ok(portfolioService.getPortfolioDetail(id, userId))
+    }
+
+    @PostMapping("/{id}/holdings")
+    fun buy(@PathVariable id: Long, @RequestBody req: BuyRequest): ResponseEntity<Any> {
+        val userId = currentUserId()
+        val result = portfolioService.buy(id, userId, req)
+        return ResponseEntity.status(HttpStatus.CREATED).body(result)
+    }
+
+    @PatchMapping("/{id}/holdings/{hid}")
+    fun sell(
+        @PathVariable id: Long,
+        @PathVariable hid: Long,
+        @RequestBody req: SellRequest,
+    ): ResponseEntity<Any> {
+        val userId = currentUserId()
+        portfolioService.sell(id, hid, userId, req)
+        return ResponseEntity.noContent().build()
+    }
+
+    @DeleteMapping("/{id}/holdings/{hid}")
+    fun deleteHolding(@PathVariable id: Long, @PathVariable hid: Long): ResponseEntity<Any> {
+        val userId = currentUserId()
+        portfolioService.deleteHolding(id, hid, userId)
+        return ResponseEntity.noContent().build()
+    }
+
+    @PostMapping("/{id}/reset")
+    fun reset(@PathVariable id: Long): ResponseEntity<Any> {
+        val userId = currentUserId()
+        portfolioService.reset(id, userId)
+        return ResponseEntity.noContent().build()
+    }
+
+    @GetMapping("/{id}/analysis")
+    fun analysis(@PathVariable id: Long): ResponseEntity<Any> {
+        val userId = currentUserId()
+        portfolioService.verifyOwnership(id, userId)
+
+        val body = mapOf("portfolio_id" to id)
+        val riskScore = calcClient.post("/internal/portfolios/risk-score", body)
+        val risk = calcClient.post("/internal/portfolios/risk", body)
+        val diversification = calcClient.post("/internal/portfolios/diversification", body)
+
+        return ResponseEntity.ok(mapOf(
+            "risk_score" to riskScore,
+            "risk_decomposition" to risk,
+            "diversification" to diversification,
+        ))
+    }
+
+    private fun currentUserId(): UUID =
+        UUID.fromString(SecurityContextHolder.getContext().authentication.name)
+}
