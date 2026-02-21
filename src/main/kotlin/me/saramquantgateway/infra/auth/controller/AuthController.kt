@@ -1,11 +1,13 @@
-package me.saramquantgateway.infra.user.controller
+package me.saramquantgateway.infra.auth.controller
 
-import me.saramquantgateway.domain.enum.auth.OAuthProvider
-import me.saramquantgateway.infra.jwt.service.RefreshTokenService
+import me.saramquantgateway.domain.enum.auth.AuthProvider
+import me.saramquantgateway.infra.auth.dto.ManualLoginRequest
+import me.saramquantgateway.infra.auth.dto.ManualSignupRequest
+import me.saramquantgateway.infra.auth.service.AuthService
 import me.saramquantgateway.infra.security.CookieUtil
-import me.saramquantgateway.infra.user.service.AuthService
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
+import jakarta.validation.Valid
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
@@ -18,21 +20,43 @@ class AuthController(
     @param:Value("\${app.frontend-redirect-url}") private val frontendRedirectUrl: String,
 ) {
 
+    // ── OAuth callbacks ──
+
     @GetMapping("/login/oauth2/code/google")
-    fun googleCallback(
-        @RequestParam code: String,
-        response: HttpServletResponse,
-    ) {
-        handleCallback(OAuthProvider.GOOGLE, code, response)
+    fun googleCallback(@RequestParam code: String, response: HttpServletResponse) {
+        handleOAuthCallback(AuthProvider.GOOGLE, code, response)
     }
 
     @GetMapping("/login/oauth2/code/kakao")
-    fun kakaoCallback(
-        @RequestParam code: String,
-        response: HttpServletResponse,
-    ) {
-        handleCallback(OAuthProvider.KAKAO, code, response)
+    fun kakaoCallback(@RequestParam code: String, response: HttpServletResponse) {
+        handleOAuthCallback(AuthProvider.KAKAO, code, response)
     }
+
+    // ── Manual (email) auth ──
+
+    @PostMapping("/api/auth/signup")
+    fun signup(
+        @Valid @RequestBody req: ManualSignupRequest,
+        response: HttpServletResponse,
+    ): ResponseEntity<Void> {
+        val result = authService.manualSignup(req)
+        cookieUtil.setAccessToken(response, result.accessToken)
+        cookieUtil.setRefreshToken(response, result.refreshToken)
+        return ResponseEntity.ok().build()
+    }
+
+    @PostMapping("/api/auth/login")
+    fun manualLogin(
+        @Valid @RequestBody req: ManualLoginRequest,
+        response: HttpServletResponse,
+    ): ResponseEntity<Void> {
+        val result = authService.manualLogin(req)
+        cookieUtil.setAccessToken(response, result.accessToken)
+        cookieUtil.setRefreshToken(response, result.refreshToken)
+        return ResponseEntity.ok().build()
+    }
+
+    // ── Token management ──
 
     @PostMapping("/api/auth/refresh")
     fun refresh(request: HttpServletRequest, response: HttpServletResponse): ResponseEntity<Void> {
@@ -63,9 +87,9 @@ class AuthController(
         return ResponseEntity.noContent().build()
     }
 
-    private fun handleCallback(provider: OAuthProvider, code: String, response: HttpServletResponse) {
+    private fun handleOAuthCallback(provider: AuthProvider, code: String, response: HttpServletResponse) {
         try {
-            val result = authService.login(provider, code)
+            val result = authService.oauthLogin(provider, code)
             cookieUtil.setAccessToken(response, result.accessToken)
             cookieUtil.setRefreshToken(response, result.refreshToken)
             response.sendRedirect(frontendRedirectUrl)

@@ -4,7 +4,7 @@ import me.saramquantgateway.infra.security.CookieUtil
 import me.saramquantgateway.infra.user.dto.ProfileResponse
 import me.saramquantgateway.infra.user.dto.ProfileUpdateRequest
 import me.saramquantgateway.infra.user.dto.UserResponse
-import me.saramquantgateway.infra.user.service.AuthService
+import me.saramquantgateway.infra.auth.service.AuthService
 import me.saramquantgateway.infra.user.service.ProfileService
 import me.saramquantgateway.infra.user.service.UserService
 import jakarta.servlet.http.HttpServletResponse

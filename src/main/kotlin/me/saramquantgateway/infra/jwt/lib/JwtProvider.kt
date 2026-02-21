@@ -3,7 +3,7 @@ package me.saramquantgateway.infra.jwt.lib
 import io.jsonwebtoken.Claims
 import io.jsonwebtoken.JwtException
 import io.jsonwebtoken.Jwts
-import me.saramquantgateway.domain.enum.auth.OAuthProvider
+import me.saramquantgateway.domain.enum.auth.AuthProvider
 import me.saramquantgateway.domain.enum.user.UserRole
 import org.springframework.stereotype.Component
 import java.util.Date
@@ -12,7 +12,7 @@ import java.util.UUID
 @Component
 class JwtProvider(private val props: JwtProperties) {
 
-    fun generateAccessToken(userId: UUID, email: String, provider: OAuthProvider, role: UserRole): String =
+    fun generateAccessToken(userId: UUID, email: String, provider: AuthProvider, role: UserRole): String =
         Jwts.builder()
             .subject(userId.toString())
             .claim("email", email)

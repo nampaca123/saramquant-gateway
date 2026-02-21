@@ -21,6 +21,8 @@ class JwtAuthenticationFilter(
     private val pathMatcher = AntPathMatcher()
     private val skipPaths = listOf(
         "/login/oauth2/code/**",
+        "/api/auth/signup",
+        "/api/auth/login",
         "/api/auth/refresh",
         "/api/auth/logout",
     )

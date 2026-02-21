@@ -2,7 +2,7 @@ package me.saramquantgateway.infra.user.service
 
 import me.saramquantgateway.domain.entity.user.User
 import me.saramquantgateway.domain.entity.user.UserProfile
-import me.saramquantgateway.domain.enum.auth.OAuthProvider
+import me.saramquantgateway.domain.enum.auth.AuthProvider
 import me.saramquantgateway.domain.repository.user.UserProfileRepository
 import me.saramquantgateway.domain.repository.user.UserRepository
 import me.saramquantgateway.infra.oauth.dto.OAuthUserInfo
@@ -22,13 +22,28 @@ class UserService(
     fun findById(id: UUID): User? = userRepo.findById(id).orElse(null)
 
     @Transactional
-    fun createUser(info: OAuthUserInfo, provider: OAuthProvider): User {
+    fun createOAuthUser(info: OAuthUserInfo, provider: AuthProvider): User {
         val user = userRepo.save(
             User(
                 email = info.email,
                 name = info.name,
                 provider = provider,
                 providerId = info.providerId,
+            )
+        )
+        profileRepo.save(UserProfile(userId = user.id))
+        return user
+    }
+
+    @Transactional
+    fun createManualUser(email: String, name: String, passwordHash: String): User {
+        val user = userRepo.save(
+            User(
+                email = email,
+                name = name,
+                provider = AuthProvider.MANUAL,
+                providerId = email,
+                passwordHash = passwordHash,
             )
         )
         profileRepo.save(UserProfile(userId = user.id))

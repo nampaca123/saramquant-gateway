@@ -1,6 +1,6 @@
 package me.saramquantgateway.domain.entity.user
 
-import me.saramquantgateway.domain.enum.auth.OAuthProvider
+import me.saramquantgateway.domain.enum.auth.AuthProvider
 import me.saramquantgateway.domain.enum.user.UserRole
 import jakarta.persistence.*
 import java.time.Instant
@@ -20,11 +20,14 @@ class User(
     var name: String,
 
     @Enumerated(EnumType.STRING)
-    @Column(nullable = false, columnDefinition = "oauth_provider_type")
-    val provider: OAuthProvider,
+    @Column(nullable = false, columnDefinition = "auth_provider_type")
+    val provider: AuthProvider,
 
     @Column(name = "provider_id", nullable = false, length = 255)
     val providerId: String,
+
+    @Column(name = "password_hash", length = 60)
+    val passwordHash: String? = null,
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, columnDefinition = "user_role_type")

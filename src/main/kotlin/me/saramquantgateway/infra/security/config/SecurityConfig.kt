@@ -9,6 +9,8 @@ import org.springframework.security.config.annotation.method.configuration.Enabl
 import org.springframework.security.config.annotation.web.builders.HttpSecurity
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity
 import org.springframework.security.config.http.SessionCreationPolicy
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder
+import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.security.web.SecurityFilterChain
 import org.springframework.security.web.authentication.UsernamePasswordAuthenticationFilter
 import org.springframework.web.cors.CorsConfiguration
@@ -24,6 +26,9 @@ class SecurityConfig(
 ) {
 
     @Bean
+    fun passwordEncoder(): PasswordEncoder = BCryptPasswordEncoder()
+
+    @Bean
     fun filterChain(http: HttpSecurity): SecurityFilterChain =
         http
             .csrf { it.disable() }
@@ -31,6 +36,7 @@ class SecurityConfig(
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests {
                 it.requestMatchers("/login/oauth2/code/**").permitAll()
+                    .requestMatchers("/api/auth/signup", "/api/auth/login").permitAll()
                     .requestMatchers("/api/auth/refresh", "/api/auth/logout").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/dashboard/**").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/stocks/**").permitAll()
