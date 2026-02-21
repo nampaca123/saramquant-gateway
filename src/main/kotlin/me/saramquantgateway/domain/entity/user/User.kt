@@ -2,6 +2,7 @@ package me.saramquantgateway.domain.entity.user
 
 import me.saramquantgateway.domain.enum.auth.AuthProvider
 import me.saramquantgateway.domain.enum.user.UserRole
+import me.saramquantgateway.infra.security.crypto.EncryptionConverter
 import jakarta.persistence.*
 import org.springframework.data.domain.Persistable
 import java.time.Instant
@@ -14,17 +15,23 @@ class User(
     @get:JvmName("_getId")
     val id: UUID = UUID.randomUUID(),
 
-    @Column(nullable = false, unique = true, length = 255)
+    @Convert(converter = EncryptionConverter::class)
+    @Column(nullable = false, length = 512)
     val email: String,
 
-    @Column(nullable = false, length = 100)
+    @Column(name = "email_hash", unique = true)
+    val emailHash: String? = null,
+
+    @Convert(converter = EncryptionConverter::class)
+    @Column(nullable = false, length = 512)
     var name: String,
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, columnDefinition = "auth_provider_type")
     val provider: AuthProvider,
 
-    @Column(name = "provider_id", nullable = false, length = 255)
+    @Convert(converter = EncryptionConverter::class)
+    @Column(name = "provider_id", nullable = false, length = 512)
     val providerId: String,
 
     @Column(name = "password_hash", length = 60)

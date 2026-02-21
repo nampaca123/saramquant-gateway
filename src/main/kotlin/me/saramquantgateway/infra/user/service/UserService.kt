@@ -6,6 +6,7 @@ import me.saramquantgateway.domain.enum.auth.AuthProvider
 import me.saramquantgateway.domain.repository.user.UserProfileRepository
 import me.saramquantgateway.domain.repository.user.UserRepository
 import me.saramquantgateway.infra.oauth.dto.OAuthUserInfo
+import me.saramquantgateway.infra.security.crypto.Hasher
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
 import java.time.Instant
@@ -15,9 +16,10 @@ import java.util.UUID
 class UserService(
     private val userRepo: UserRepository,
     private val profileRepo: UserProfileRepository,
+    private val hasher: Hasher,
 ) {
 
-    fun findByEmail(email: String): User? = userRepo.findByEmail(email)
+    fun findByEmail(email: String): User? = userRepo.findByEmailHash(hasher.hash(email))
 
     fun findById(id: UUID): User? = userRepo.findById(id).orElse(null)
 
@@ -26,6 +28,7 @@ class UserService(
         val user = userRepo.save(
             User(
                 email = info.email,
+                emailHash = hasher.hash(info.email),
                 name = info.name,
                 provider = provider,
                 providerId = info.providerId,
@@ -40,6 +43,7 @@ class UserService(
         val user = userRepo.save(
             User(
                 email = email,
+                emailHash = hasher.hash(email),
                 name = name,
                 provider = AuthProvider.MANUAL,
                 providerId = email,

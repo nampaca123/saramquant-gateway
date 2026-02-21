@@ -186,12 +186,43 @@ saramquant-gateway/
     │       │       ├── OAuthTokenResponse.kt
     │       │       └── OAuthUserInfo.kt
     │       │
+    │       ├── log/                               # 감사 로그 + 방문자 추적
+    │       │   ├── entity/
+    │       │   │   ├── AuditLog.kt               # audit_log 테이블 매핑
+    │       │   │   └── IpGeolocation.kt          # ip_geolocations 테이블 매핑
+    │       │   ├── repository/
+    │       │   │   ├── AuditLogRepository.kt     # 필터 쿼리 + 페이지네이션
+    │       │   │   └── IpGeolocationRepository.kt
+    │       │   ├── filter/
+    │       │   │   └── AuditLogFilter.kt         # 비동기 이벤트 발행 (AuditEventListener 포함)
+    │       │   ├── client/
+    │       │   │   └── NaverGeolocationClient.kt # Naver Cloud API (지수 백오프, 3회 재시도)
+    │       │   ├── service/
+    │       │   │   ├── AuditLogService.kt        # 관리자 로그 조회
+    │       │   │   ├── IpGeolocationService.kt   # IP→지리 정보 (DB→Naver API→upsert)
+    │       │   │   └── VisitStatsService.kt      # 방문자 통계 (클러스터, 시간대, 경로별)
+    │       │   ├── controller/
+    │       │   │   └── AdminController.kt        # GET /api/admin/logs, /visitors (ADMIN only)
+    │       │   ├── dto/
+    │       │   │   ├── AuditLogResponse.kt
+    │       │   │   └── VisitStatsResponse.kt
+    │       │   └── util/
+    │       │       ├── ClientIpExtractor.kt      # X-Forwarded-For 등에서 클라이언트 IP 추출
+    │       │       ├── IpMasker.kt               # IP 마스킹 (X.X.*.*)
+    │       │       └── InfraTrafficFilter.kt     # 인프라 트래픽(봇) 필터링
+    │       │
     │       ├── security/
     │       │   ├── config/
-    │       │   │   └── SecurityConfig.kt          # Spring Security 설정, CORS, permit 경로
+    │       │   │   └── SecurityConfig.kt          # Spring Security 설정, CORS, 필터 체인 등록
+    │       │   ├── crypto/
+    │       │   │   ├── CryptoProperties.kt        # HASH_SECRET 바인딩
+    │       │   │   ├── Hasher.kt                  # HMAC-SHA256 (IP 해싱, email blind index)
+    │       │   │   ├── AesEncryptor.kt            # AES-256-GCM 양방향 암호화
+    │       │   │   └── EncryptionConverter.kt     # JPA AttributeConverter (자동 암/복호화)
     │       │   ├── CookieUtil.kt                  # HttpOnly 쿠키 생성/삭제 유틸
     │       │   └── filter/
-    │       │       └── JwtAuthenticationFilter.kt # 쿠키에서 JWT 추출 → SecurityContext 설정
+    │       │       ├── JwtAuthenticationFilter.kt # 쿠키에서 JWT 추출 → SecurityContext 설정
+    │       │       └── RateLimitFilter.kt         # Bucket4j IP당 5req/sec, burst 10
     │       │
     │       ├── storage/
     │       │   ├── lib/
@@ -244,7 +275,8 @@ JPA Entity, Enum, Repository 인터페이스만 포함한다. Spring 외 의존�
 | `auth` | 회원가입 / 로그인 / 토큰 관리 API |
 | `connection` | Calc Server HTTP 클라이언트 |
 | `jwt` | RSA 키페어 기반 JWT 발급·검증, Refresh Token rotation |
+| `log` | 감사 로그, IP 지리 추적 (Naver Cloud), 방문자 통계, 관리자 API |
 | `oauth` | Google / Kakao OAuth 코드 교환 |
-| `security` | Spring Security 설정, JWT 쿠키 필터 |
+| `security` | Spring Security 설정, JWT 쿠키 필터, Rate Limiting (Bucket4j), AES-256-GCM 암호화 |
 | `storage` | Supabase Storage 파일 업로드 |
 | `user` | 사용자 프로필 조회·수정 API |

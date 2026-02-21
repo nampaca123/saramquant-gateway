@@ -13,9 +13,9 @@ kotlin {
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-data-jpa")
-    implementation("org.springframework.boot:spring-boot-starter-data-redis")
     implementation("org.springframework.boot:spring-boot-starter-validation")
     implementation("org.springframework.boot:spring-boot-starter-security")
+    implementation("com.bucket4j:bucket4j_jdk17-core:8.16.1")
 
     implementation("com.fasterxml.jackson.module:jackson-module-kotlin")
     implementation("org.jetbrains.kotlin:kotlin-reflect")
@@ -26,6 +26,7 @@ dependencies {
 
     runtimeOnly("org.postgresql:postgresql")
     implementation("org.springframework:spring-webflux")
+    implementation("io.projectreactor.netty:reactor-netty-http")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
 }

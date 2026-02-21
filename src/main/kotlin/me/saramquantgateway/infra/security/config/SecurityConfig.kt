@@ -1,6 +1,8 @@
 package me.saramquantgateway.infra.security.config
 
+import me.saramquantgateway.infra.log.filter.AuditLogFilter
 import me.saramquantgateway.infra.security.filter.JwtAuthenticationFilter
+import me.saramquantgateway.infra.security.filter.RateLimitFilter
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.context.annotation.Bean
 import org.springframework.context.annotation.Configuration
@@ -22,6 +24,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 @EnableMethodSecurity
 class SecurityConfig(
     private val jwtFilter: JwtAuthenticationFilter,
+    private val rateLimitFilter: RateLimitFilter,
+    private val auditLogFilter: AuditLogFilter,
     @param:Value("\${app.frontend-redirect-url}") private val frontendUrl: String,
 ) {
 
@@ -41,10 +45,13 @@ class SecurityConfig(
                     .requestMatchers(HttpMethod.GET, "/api/dashboard/**").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/stocks/**").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/stocks/*/simulation").permitAll()
+                    .requestMatchers("/api/admin/**").authenticated()
                     .requestMatchers("/api/**").authenticated()
                     .anyRequest().permitAll()
             }
+            .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter::class.java)
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter::class.java)
+            .addFilterAfter(auditLogFilter, JwtAuthenticationFilter::class.java)
             .build()
 
     private fun corsSource(): CorsConfigurationSource {

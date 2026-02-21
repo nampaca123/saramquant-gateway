@@ -3,6 +3,7 @@ package me.saramquantgateway.domain.entity.user
 import me.saramquantgateway.domain.enum.user.Gender
 import me.saramquantgateway.domain.enum.user.InvestmentExperience
 import me.saramquantgateway.domain.enum.stock.Market
+import me.saramquantgateway.infra.security.crypto.EncryptionConverter
 import jakarta.persistence.*
 import org.springframework.data.domain.Persistable
 import java.time.Instant
@@ -18,7 +19,8 @@ class UserProfile(
     @Column(name = "user_id", nullable = false, unique = true)
     val userId: UUID,
 
-    @Column(length = 30)
+    @Convert(converter = EncryptionConverter::class)
+    @Column(length = 512)
     var nickname: String? = null,
 
     @Column(name = "birth_year")
