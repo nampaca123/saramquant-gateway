@@ -492,9 +492,14 @@ SaramQuant의 가장 큰 차별점.
 
 ### 8.4 비용 관리
 
-- Stock Detail: 종목당 하루 1회 캐싱 (같은 종목을 여러 사용자가 봐도 1회만 생성)
-- Portfolio Check: 사용자별 생성 (포트폴리오가 다르므로 캐싱 불가)
-- 일 요청 한도: 비로그인 3회, 로그인 20회
+- **종목 분석 캐싱**: stock_ai_analyses 테이블에 (stock_id, date, preset, lang) 단위 캐시. 같은 종목+프리셋+언어는 하루 1회만 Claude 호출
+- **모델 분리**: 종목 분석은 Sonnet 4.6 (비용 효율), 포트폴리오 진단은 Opus 4.6 (복합 판단)
+- **일일 한도**: Standard 등급 20회/일, atomic increment (PostgreSQL upsert)
+- **비로그인자 제한**: GET 캐시 조회만 가능, POST 트리거 불가 (익명 식별 불가로 rate limit 우회 방지)
+- **프리셋 기반**: 자유 채팅 미허용, 정해진 프리셋만 사용하여 프롬프트 제어
+- **Thundering herd 방지**: ConcurrentHashMap 기반 인메모리 락으로 동시 캐시 미스 시 중복 호출 차단
+- **캐시 TTL**: 30일 이상된 분석 레코드를 매일 새벽 자동 삭제
+- **Fallback**: Claude 2회 실패 시 OpenAI GPT-5.2로 자동 폴백 (지수 백오프)
 
 ------
 
@@ -543,45 +548,93 @@ SaramQuant의 가장 큰 차별점.
 
 > Gateway는 Calc 서버의 파이프라인이 매일 DB에 저장해둔 데이터를 JPA로 직접 읽는다. Calc 서버에게 API로 요청하는 것은 numpy 등 Python 런타임이 필요한 연산뿐이다.
 
+**LLM 연동 레이어** (Gateway 내):
+- `infra/ai/`: AnthropicClient (Sonnet 4.6 / Opus 4.6), OpenAiClient (GPT-5.2 fallback), LlmRouter (retry + fallback)
+- `feature/ai/`: StockAiService (캐싱 + thundering herd 방지), PortfolioAiService, AiUsageService (일일 한도), PromptBuilder (i18n 프롬프트)
+- DB: stock_ai_analyses (캐시), ai_usage_logs (사용량 추적)
+
 ------
 
-## 11. 필요 API 목록
+## 11. API 목록 (구현 완료)
 
-### Gateway (Spring Boot) — DB 직접 조회
+### Gateway API (Spring Boot, Kotlin)
 
-| API | 용도 | 화면 |
-|-----|------|------|
-| GET /api/risk-badges | 마켓별 리스크 뱃지 목록 (페이지네이션, 등급 필터) | Screener, Home |
-| GET /api/stocks/{symbol} | 종목 기본 정보 + 최신 지표 + 펀더멘털 + 리스크 뱃지 | Detail |
-| GET /api/stocks/{symbol}/prices | 가격 시계열 (차트용) | Detail |
-| GET /api/stocks/{symbol}/benchmark | 벤치마크 대비 수익률 | Detail |
-| POST /api/ai/stock-analysis | LLM 종목 해석 요청 (지표 + 뱃지 데이터 주입) | Detail |
-| POST /api/portfolio/analyze | 포트폴리오 리스크 계산 (가중 베타, 분산 효과, 재무 건전성) | Portfolio |
-| POST /api/ai/portfolio-analysis | LLM 포트폴리오 진단 | Portfolio |
+**인증 / 사용자**
+| Method | Path | Auth | 설명 |
+|--------|------|------|------|
+| GET | `/login/oauth2/code/{provider}` | - | OAuth 콜백 (Google, Kakao) |
+| POST | `/api/auth/refresh` | - | Access Token 재발급 |
+| POST | `/api/auth/logout` | - | 로그아웃 (쿠키 제거) |
+| GET | `/api/users/me` | ✅ | 내 프로필 |
+| PATCH | `/api/users/me` | ✅ | 프로필 수정 (닉네임, 관심시장, 아바타) |
 
-### Calc 서버 (Flask) — Gateway가 내부 호출
+**대시보드 (Screener 통합)**
+| Method | Path | Auth | 설명 |
+|--------|------|------|------|
+| GET | `/api/dashboard/stocks?market=&tier=&sector=&sort=&page=&size=` | - | 종목 카드 목록 (필터/정렬/페이지네이션) |
+| GET | `/api/dashboard/sectors?market=` | - | 섹터 필터용 목록 |
 
-| API | 용도 | 비고 |
-|-----|------|------|
-| GET /internal/stocks/{symbol}/simulation | 몬테카를로 시뮬레이션 (GBM) | x-api-key 인증 필요 |
+**종목 상세 (Stock Detail)**
+| Method | Path | Auth | 설명 |
+|--------|------|------|------|
+| GET | `/api/stocks/{symbol}?market=&lang=` | - | 종목 리포트 (헤더+뱃지+지표+펀더멘털+섹터비교+팩터+AI캐시) |
+| GET | `/api/stocks/{symbol}/prices?market=&period=` | - | OHLCV 시계열 (캔들차트용) |
+| GET | `/api/stocks/{symbol}/benchmark?market=&period=` | - | 벤치마크 대비 정규화 수익률 |
+| GET | `/api/stocks/{symbol}/ai-analysis?market=&preset=&lang=` | - | 캐시된 AI 분석 조회 |
+
+**AI 전략 분석**
+| Method | Path | Auth | 설명 |
+|--------|------|------|------|
+| POST | `/api/ai/stock-analysis` | ✅ + Rate Limit | LLM 종목 분석 트리거 |
+| POST | `/api/ai/portfolio-analysis` | ✅ + Rate Limit | LLM 포트폴리오 진단 트리거 |
+| GET | `/api/ai/usage` | ✅ | 일일 AI 사용량 조회 |
+
+**포트폴리오**
+| Method | Path | Auth | 설명 |
+|--------|------|------|------|
+| GET | `/api/portfolios` | ✅ | 내 포트폴리오 목록 |
+| GET | `/api/portfolios/{id}` | ✅ | 포트폴리오 상세 (보유종목) |
+| POST | `/api/portfolios/{id}/buy` | ✅ | 매수 (종목 추가/평균 매입가 산출) |
+| POST | `/api/portfolios/{id}/sell/{holdingId}` | ✅ | 매도 (부분/전량) |
+| DELETE | `/api/portfolios/{id}/holdings/{holdingId}` | ✅ | 보유종목 삭제 |
+| DELETE | `/api/portfolios/{id}/reset` | ✅ | 포트폴리오 초기화 |
+
+**시뮬레이션 (Calc 서버 프록시)**
+| Method | Path | Auth | 설명 |
+|--------|------|------|------|
+| GET | `/api/stocks/{symbol}/simulation?market=&method=&days=&trials=` | - | 몬테카를로 시뮬레이션 |
+| POST | `/api/portfolios/{id}/risk-score` | ✅ | 포트폴리오 리스크 점수 |
+| POST | `/api/portfolios/{id}/risk` | ✅ | 리스크 분해 (MCAR) |
+| POST | `/api/portfolios/{id}/diversification` | ✅ | 분산 효과 분석 (HHI, Effective N) |
+
+### Calc 서버 (Flask, Python) — Internal API
+
+| Method | Path | Auth | 설명 |
+|--------|------|------|------|
+| POST | `/internal/portfolios/risk-score` | x-api-key | 가중평균 리스크 스코어 |
+| POST | `/internal/portfolios/risk` | x-api-key | 공분산 리스크 분해 |
+| POST | `/internal/portfolios/diversification` | x-api-key | HHI, Effective N, 분산효과 비율 |
+| POST | `/internal/portfolios/price-lookup` | x-api-key | 특정 날짜 종가 + 환율 조회 |
+| GET | `/api/stocks/{symbol}/simulation` | x-api-key | 몬테카를로 시뮬레이션 |
+| GET | `/health` | - | 헬스 체크 |
 
 ------
 
 ## 12. MVP 로드맵
 
-### Phase 1 (MVP, 2~3주)
+### Phase 1 (MVP, 2~3주) (완료)
 
 - Home: 시장 요약 + 리스크 급변 종목
 - Stock Detail: 리스크 카드 + 차트 + AI 해석
 - Risk Badge 계산 로직 (Flask)
 - Spring Gateway 기본 API 구축
 
-### Phase 2 (+1~2주)
+### Phase 2 (+1~2주) (완료)
 
 - Screener: 필터 + 결과 리스트
 - Portfolio Check: 종목 추가 + 전체 리스크 계산 + 분산 효과
 
-### Phase 3 (+1~2주)
+### Phase 3 (+1~2주) (완료)
 
 - 몬테카를로 시뮬레이션 (GBM)
 - AI 포트폴리오 진단

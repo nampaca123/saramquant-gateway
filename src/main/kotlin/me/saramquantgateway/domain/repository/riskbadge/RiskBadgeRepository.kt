@@ -15,4 +15,6 @@ interface RiskBadgeRepository : JpaRepository<RiskBadge, Long> {
     fun findByMarket(market: Market, pageable: Pageable): Page<RiskBadge>
 
     fun findByMarketAndSummaryTier(market: Market, summaryTier: String, pageable: Pageable): Page<RiskBadge>
+
+    fun findByMarketAndSummaryTierIn(market: Market, summaryTiers: List<String>, pageable: Pageable): Page<RiskBadge>
 }

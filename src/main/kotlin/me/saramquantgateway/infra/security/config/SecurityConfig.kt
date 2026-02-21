@@ -32,7 +32,8 @@ class SecurityConfig(
             .authorizeHttpRequests {
                 it.requestMatchers("/login/oauth2/code/**").permitAll()
                     .requestMatchers("/api/auth/refresh", "/api/auth/logout").permitAll()
-                    .requestMatchers(HttpMethod.GET, "/api/risk-badges/**").permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/dashboard/**").permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/stocks/**").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/stocks/*/simulation").permitAll()
                     .requestMatchers("/api/**").authenticated()
                     .anyRequest().permitAll()

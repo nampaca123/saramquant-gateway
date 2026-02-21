@@ -79,5 +79,5 @@ class PortfolioController(
     }
 
     private fun currentUserId(): UUID =
-        UUID.fromString(SecurityContextHolder.getContext().authentication.name)
+        UUID.fromString(SecurityContextHolder.getContext().authentication!!.name)
 }
