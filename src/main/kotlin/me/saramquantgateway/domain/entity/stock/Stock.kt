@@ -24,6 +24,9 @@ class Stock(
     @Column(name = "is_active", nullable = false)
     val isActive: Boolean = true,
 
+    @Column(length = 100)
+    val sector: String? = null,
+
     @Column(name = "dart_corp_code", length = 8)
     val dartCorpCode: String? = null,
 

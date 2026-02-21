@@ -21,6 +21,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 class SecurityConfig(
     private val jwtFilter: JwtAuthenticationFilter,
     @param:Value("\${app.frontend-redirect-url}") private val frontendUrl: String,
+    @param:Value("\${app.calc-server.url}") val calcServerUrl: String,
+    @param:Value("\${app.calc-server.auth-key}") val calcServerAuthKey: String,
 ) {
 
     @Bean
@@ -32,6 +34,7 @@ class SecurityConfig(
             .authorizeHttpRequests {
                 it.requestMatchers("/login/oauth2/code/**").permitAll()
                     .requestMatchers("/api/auth/refresh", "/api/auth/logout").permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/risk-badges/**").permitAll()
                     .requestMatchers("/api/**").authenticated()
                     .anyRequest().permitAll()
             }
