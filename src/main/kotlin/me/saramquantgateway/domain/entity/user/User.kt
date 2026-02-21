@@ -3,6 +3,7 @@ package me.saramquantgateway.domain.entity.user
 import me.saramquantgateway.domain.enum.auth.AuthProvider
 import me.saramquantgateway.domain.enum.user.UserRole
 import jakarta.persistence.*
+import org.springframework.data.domain.Persistable
 import java.time.Instant
 import java.util.UUID
 
@@ -10,7 +11,7 @@ import java.util.UUID
 @Table(name = "users")
 class User(
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
+    @get:JvmName("_getId")
     val id: UUID = UUID.randomUUID(),
 
     @Column(nullable = false, unique = true, length = 255)
@@ -38,4 +39,15 @@ class User(
 
     @Column(name = "last_login_at", nullable = false)
     var lastLoginAt: Instant = Instant.now(),
-)
+) : Persistable<UUID> {
+
+    @Transient
+    private var _isNew: Boolean = true
+
+    override fun getId(): UUID = id
+    override fun isNew(): Boolean = _isNew
+
+    @PostPersist
+    @PostLoad
+    fun markNotNew() { _isNew = false }
+}

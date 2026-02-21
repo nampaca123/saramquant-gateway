@@ -4,6 +4,7 @@ import me.saramquantgateway.domain.enum.user.Gender
 import me.saramquantgateway.domain.enum.user.InvestmentExperience
 import me.saramquantgateway.domain.enum.stock.Market
 import jakarta.persistence.*
+import org.springframework.data.domain.Persistable
 import java.time.Instant
 import java.util.UUID
 
@@ -11,7 +12,7 @@ import java.util.UUID
 @Table(name = "user_profiles")
 class UserProfile(
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
+    @get:JvmName("_getId")
     val id: UUID = UUID.randomUUID(),
 
     @Column(name = "user_id", nullable = false, unique = true)
@@ -48,4 +49,15 @@ class UserProfile(
 
     @Column(name = "updated_at", nullable = false)
     var updatedAt: Instant = Instant.now(),
-)
+) : Persistable<UUID> {
+
+    @Transient
+    private var _isNew: Boolean = true
+
+    override fun getId(): UUID = id
+    override fun isNew(): Boolean = _isNew
+
+    @PostPersist
+    @PostLoad
+    fun markNotNew() { _isNew = false }
+}

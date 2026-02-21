@@ -15,24 +15,11 @@ class JwtProperties(
     val accessTokenTtl: Long,
     val refreshTokenTtl: Long,
 ) {
-    val privateKey: RSAPrivateKey = decodePrivateKey(privateKeyBase64)
-    val publicKey: RSAPublicKey = decodePublicKey(publicKeyBase64)
+    private val kf = KeyFactory.getInstance("RSA")
 
-    private fun decodePrivateKey(base64: String): RSAPrivateKey {
-        val pem = String(Base64.getDecoder().decode(base64))
-            .replace("-----BEGIN PRIVATE KEY-----", "")
-            .replace("-----END PRIVATE KEY-----", "")
-            .replace("\\s".toRegex(), "")
-        val spec = PKCS8EncodedKeySpec(Base64.getDecoder().decode(pem))
-        return KeyFactory.getInstance("RSA").generatePrivate(spec) as RSAPrivateKey
-    }
+    val privateKey: RSAPrivateKey =
+        kf.generatePrivate(PKCS8EncodedKeySpec(Base64.getDecoder().decode(privateKeyBase64))) as RSAPrivateKey
 
-    private fun decodePublicKey(base64: String): RSAPublicKey {
-        val pem = String(Base64.getDecoder().decode(base64))
-            .replace("-----BEGIN PUBLIC KEY-----", "")
-            .replace("-----END PUBLIC KEY-----", "")
-            .replace("\\s".toRegex(), "")
-        val spec = X509EncodedKeySpec(Base64.getDecoder().decode(pem))
-        return KeyFactory.getInstance("RSA").generatePublic(spec) as RSAPublicKey
-    }
+    val publicKey: RSAPublicKey =
+        kf.generatePublic(X509EncodedKeySpec(Base64.getDecoder().decode(publicKeyBase64))) as RSAPublicKey
 }

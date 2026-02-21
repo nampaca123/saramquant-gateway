@@ -1,6 +1,7 @@
 package me.saramquantgateway.domain.entity.auth
 
 import jakarta.persistence.*
+import org.springframework.data.domain.Persistable
 import java.time.Instant
 import java.util.UUID
 
@@ -8,7 +9,7 @@ import java.util.UUID
 @Table(name = "refresh_tokens")
 class RefreshToken(
     @Id
-    @GeneratedValue(strategy = GenerationType.UUID)
+    @get:JvmName("_getId")
     val id: UUID = UUID.randomUUID(),
 
     @Column(name = "user_id", nullable = false)
@@ -25,4 +26,15 @@ class RefreshToken(
 
     @Column(name = "revoked_at")
     var revokedAt: Instant? = null,
-)
+) : Persistable<UUID> {
+
+    @Transient
+    private var _isNew: Boolean = true
+
+    override fun getId(): UUID = id
+    override fun isNew(): Boolean = _isNew
+
+    @PostPersist
+    @PostLoad
+    fun markNotNew() { _isNew = false }
+}
