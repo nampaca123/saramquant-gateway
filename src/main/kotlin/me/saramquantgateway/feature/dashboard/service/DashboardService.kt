@@ -11,6 +11,10 @@ import me.saramquantgateway.domain.repository.stock.DailyPriceRepository
 import me.saramquantgateway.domain.repository.stock.StockRepository
 import me.saramquantgateway.feature.dashboard.dto.DashboardPage
 import me.saramquantgateway.feature.dashboard.dto.DashboardStockItem
+import me.saramquantgateway.feature.dashboard.dto.ScreenerFilter
+import me.saramquantgateway.feature.dashboard.dto.StockSearchResult
+import me.saramquantgateway.feature.dashboard.repository.DashboardQueryRepository
+import jakarta.persistence.EntityManager
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service
@@ -23,15 +27,59 @@ class DashboardService(
     private val badgeRepo: RiskBadgeRepository,
     private val indicatorRepo: StockIndicatorRepository,
     private val priceRepo: DailyPriceRepository,
+    private val queryRepo: DashboardQueryRepository,
+    private val em: EntityManager,
 ) {
 
-    fun list(market: Market, tiers: List<String>?, sector: String?, sort: String, page: Int, size: Int): DashboardPage {
-        val pageable = PageRequest.of(page, size, Sort.by("name"))
-        return if (tiers != null) listByTier(market, tiers, sector, pageable)
-        else listByStock(market, sector, pageable)
+    fun list(filter: ScreenerFilter): DashboardPage {
+        if (filter.hasAdvancedFilters()) return queryRepo.search(filter)
+
+        val market = Market.valueOf(filter.market)
+        val pageable = PageRequest.of(filter.page, filter.size, Sort.by("name"))
+        return if (filter.tiers != null) listByTier(market, filter.tiers, filter.sector, pageable)
+        else listByStock(market, filter.sector, pageable)
     }
 
     fun sectors(market: Market): List<String> = stockRepo.findDistinctSectorsByMarket(market)
+
+    fun search(q: String, market: Market?, limit: Int): List<StockSearchResult> {
+        val isSingleChar = q.length == 1
+        val whereClause = buildString {
+            append("WHERE s.is_active = true")
+            if (market != null) append(" AND s.market::text = :market")
+            if (isSingleChar) {
+                append(" AND LOWER(s.symbol) LIKE :prefix")
+            } else {
+                append(" AND (s.name ILIKE :query OR s.symbol ILIKE :query)")
+            }
+        }
+        val sql = """
+            SELECT s.id, s.symbol, s.name, s.market::text, s.sector
+            FROM stocks s $whereClause
+            ORDER BY
+              CASE WHEN LOWER(s.symbol) LIKE :prefix THEN 0 ELSE 1 END,
+              s.name
+            LIMIT :lim
+        """.trimIndent()
+
+        val query = em.createNativeQuery(sql)
+        if (market != null) query.setParameter("market", market.name)
+        query.setParameter("prefix", "${q.lowercase()}%")
+        if (!isSingleChar) query.setParameter("query", "%$q%")
+        query.setParameter("lim", limit)
+
+        @Suppress("UNCHECKED_CAST")
+        val rows = query.resultList as List<Array<Any?>>
+        return rows.map { row ->
+            StockSearchResult(
+                stockId = (row[0] as Number).toLong(),
+                symbol = row[1] as String,
+                name = row[2] as String,
+                market = row[3] as String,
+                sector = row[4] as? String,
+            )
+        }
+    }
 
     private fun listByTier(market: Market, tiers: List<String>, sector: String?, pageable: PageRequest): DashboardPage {
         val badgePage = badgeRepo.findByMarketAndSummaryTierIn(market, tiers, PageRequest.of(pageable.pageNumber, pageable.pageSize, Sort.by("stockId")))

@@ -42,6 +42,7 @@ class SecurityConfig(
                 it.requestMatchers("/login/oauth2/code/**").permitAll()
                     .requestMatchers("/api/auth/signup", "/api/auth/login").permitAll()
                     .requestMatchers("/api/auth/refresh", "/api/auth/logout").permitAll()
+                    .requestMatchers(HttpMethod.GET, "/api/home/**").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/dashboard/**").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/stocks/**").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/stocks/*/simulation").permitAll()

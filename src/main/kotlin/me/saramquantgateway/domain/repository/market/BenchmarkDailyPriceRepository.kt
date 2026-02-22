@@ -12,4 +12,6 @@ interface BenchmarkDailyPriceRepository : JpaRepository<BenchmarkDailyPrice, Lon
     ): List<BenchmarkDailyPrice>
 
     fun findTop1ByBenchmarkOrderByDateDesc(benchmark: Benchmark): BenchmarkDailyPrice?
+
+    fun findTop2ByBenchmarkOrderByDateDesc(benchmark: Benchmark): List<BenchmarkDailyPrice>
 }

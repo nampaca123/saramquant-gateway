@@ -9,5 +9,7 @@ interface PortfolioHoldingRepository : JpaRepository<PortfolioHolding, Long> {
 
     fun findByPortfolioIdAndStockId(portfolioId: Long, stockId: Long): PortfolioHolding?
 
+    fun countByPortfolioId(portfolioId: Long): Long
+
     fun deleteByPortfolioId(portfolioId: Long)
 }
