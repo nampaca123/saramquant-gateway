@@ -25,16 +25,16 @@ data class DashboardStockItem(
 )
 
 data class DashboardPage(
-    val items: List<DashboardStockItem>,
-    val totalCount: Long,
+    val content: List<DashboardStockItem>,
+    val totalElements: Long,
     val totalPages: Int,
-    val page: Int,
+    val number: Int,
     val size: Int,
     val hasNext: Boolean,
 )
 
 data class ScreenerFilter(
-    val market: String,
+    val market: String? = null,
     val tiers: List<String>? = null,
     val sector: String? = null,
     val sort: String = "name_asc",

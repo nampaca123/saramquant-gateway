@@ -92,18 +92,22 @@ class DashboardQueryRepository(
 
         val totalPages = ((totalCount + filter.size - 1) / filter.size).toInt()
         return DashboardPage(
-            items = items,
-            totalCount = totalCount,
+            content = items,
+            totalElements = totalCount,
             totalPages = totalPages,
-            page = filter.page,
+            number = filter.page,
             size = filter.size,
             hasNext = filter.page < totalPages - 1,
         )
     }
 
     private fun buildWhere(filter: ScreenerFilter): Pair<String, MutableMap<String, Any>> {
-        val conditions = mutableListOf("s.is_active = true", "s.market::text = :market")
-        val params = mutableMapOf<String, Any>("market" to filter.market)
+        val conditions = mutableListOf("s.is_active = true")
+        val params = mutableMapOf<String, Any>()
+        filter.market?.let {
+            conditions += "s.market::text = :market"
+            params["market"] = it
+        }
 
         filter.tiers?.let { tiers ->
             val placeholders = tiers.indices.joinToString(", ") { ":tier$it" }
@@ -187,7 +191,7 @@ class DashboardQueryRepository(
     }
 
     private fun emptyPage(filter: ScreenerFilter) = DashboardPage(
-        items = emptyList(), totalCount = 0, totalPages = 0,
-        page = filter.page, size = filter.size, hasNext = false,
+        content = emptyList(), totalElements = 0, totalPages = 0,
+        number = filter.page, size = filter.size, hasNext = false,
     )
 }

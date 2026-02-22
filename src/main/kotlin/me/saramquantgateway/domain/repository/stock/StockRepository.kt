@@ -24,4 +24,7 @@ interface StockRepository : JpaRepository<Stock, Long> {
 
     @Query("SELECT DISTINCT s.sector FROM Stock s WHERE s.market = :market AND s.isActive = true AND s.sector IS NOT NULL ORDER BY s.sector")
     fun findDistinctSectorsByMarket(@Param("market") market: Market): List<String>
+
+    @Query("SELECT DISTINCT s.sector FROM Stock s WHERE s.isActive = true AND s.sector IS NOT NULL ORDER BY s.sector")
+    fun findDistinctSectors(): List<String>
 }

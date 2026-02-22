@@ -32,7 +32,7 @@ class DashboardService(
 ) {
 
     fun list(filter: ScreenerFilter): DashboardPage {
-        if (filter.hasAdvancedFilters()) return queryRepo.search(filter)
+        if (filter.market == null || filter.hasAdvancedFilters()) return queryRepo.search(filter)
 
         val market = Market.valueOf(filter.market)
         val pageable = PageRequest.of(filter.page, filter.size, Sort.by("name"))
@@ -40,7 +40,9 @@ class DashboardService(
         else listByStock(market, filter.sector, pageable)
     }
 
-    fun sectors(market: Market): List<String> = stockRepo.findDistinctSectorsByMarket(market)
+    fun sectors(market: Market?): List<String> =
+        if (market != null) stockRepo.findDistinctSectorsByMarket(market)
+        else stockRepo.findDistinctSectors()
 
     fun search(q: String, market: Market?, limit: Int): List<StockSearchResult> {
         val isSingleChar = q.length == 1
@@ -97,10 +99,10 @@ class DashboardService(
         }
 
         return DashboardPage(
-            items = items,
-            totalCount = badgePage.totalElements,
+            content = items,
+            totalElements = badgePage.totalElements,
             totalPages = badgePage.totalPages,
-            page = pageable.pageNumber,
+            number = pageable.pageNumber,
             size = pageable.pageSize,
             hasNext = badgePage.hasNext(),
         )
@@ -124,10 +126,10 @@ class DashboardService(
         }
 
         return DashboardPage(
-            items = items,
-            totalCount = stockPage.totalElements,
+            content = items,
+            totalElements = stockPage.totalElements,
             totalPages = stockPage.totalPages,
-            page = pageable.pageNumber,
+            number = pageable.pageNumber,
             size = pageable.pageSize,
             hasNext = stockPage.hasNext(),
         )
@@ -162,10 +164,10 @@ class DashboardService(
     }
 
     private fun emptyPage(pageable: PageRequest) = DashboardPage(
-        items = emptyList(),
-        totalCount = 0,
+        content = emptyList(),
+        totalElements = 0,
         totalPages = 0,
-        page = pageable.pageNumber,
+        number = pageable.pageNumber,
         size = pageable.pageSize,
         hasNext = false,
     )

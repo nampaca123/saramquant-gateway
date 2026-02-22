@@ -15,7 +15,7 @@ class DashboardController(private val service: DashboardService) {
 
     @GetMapping("/stocks")
     fun stocks(
-        @RequestParam market: Market,
+        @RequestParam(required = false) market: Market?,
         @RequestParam(required = false) tier: String?,
         @RequestParam(required = false) sector: String?,
         @RequestParam(defaultValue = "name_asc") sort: String,
@@ -42,7 +42,7 @@ class DashboardController(private val service: DashboardService) {
         @RequestParam(required = false) query: String?,
     ): ResponseEntity<DashboardPage> {
         val filter = ScreenerFilter(
-            market = market.name,
+            market = market?.name,
             tiers = tier?.split(",")?.map { it.trim().uppercase() },
             sector = sector,
             sort = sort,
@@ -73,6 +73,6 @@ class DashboardController(private val service: DashboardService) {
     }
 
     @GetMapping("/sectors")
-    fun sectors(@RequestParam market: Market): ResponseEntity<List<String>> =
+    fun sectors(@RequestParam(required = false) market: Market?): ResponseEntity<List<String>> =
         ResponseEntity.ok(service.sectors(market))
 }
