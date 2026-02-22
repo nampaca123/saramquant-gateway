@@ -1,6 +1,7 @@
 package me.saramquantgateway.infra.security.config
 
 import me.saramquantgateway.infra.log.filter.AuditLogFilter
+import me.saramquantgateway.infra.security.filter.GatewayAuthFilter
 import me.saramquantgateway.infra.security.filter.JwtAuthenticationFilter
 import me.saramquantgateway.infra.security.filter.RateLimitFilter
 import org.springframework.beans.factory.annotation.Value
@@ -24,9 +25,10 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource
 @EnableMethodSecurity
 class SecurityConfig(
     private val jwtFilter: JwtAuthenticationFilter,
+    private val gatewayAuthFilter: GatewayAuthFilter,
     private val rateLimitFilter: RateLimitFilter,
     private val auditLogFilter: AuditLogFilter,
-    @param:Value("\${app.frontend-redirect-url}") private val frontendUrl: String,
+    @param:Value("\${app.cors.allowed-origin}") private val corsOrigin: String,
 ) {
 
     @Bean
@@ -51,20 +53,20 @@ class SecurityConfig(
                     .anyRequest().permitAll()
             }
             .addFilterBefore(rateLimitFilter, UsernamePasswordAuthenticationFilter::class.java)
+            .addFilterBefore(gatewayAuthFilter, RateLimitFilter::class.java)
             .addFilterBefore(jwtFilter, UsernamePasswordAuthenticationFilter::class.java)
             .addFilterAfter(auditLogFilter, JwtAuthenticationFilter::class.java)
             .build()
 
     private fun corsSource(): CorsConfigurationSource {
-        val origin = frontendUrl.substringBeforeLast("/")
         val config = CorsConfiguration().apply {
-            allowedOrigins = listOf(origin)
+            allowedOrigins = listOf(corsOrigin)
             allowedMethods = listOf(
                 HttpMethod.GET.name(), HttpMethod.POST.name(),
                 HttpMethod.PATCH.name(), HttpMethod.DELETE.name(),
                 HttpMethod.OPTIONS.name(),
             )
-            allowedHeaders = listOf("Content-Type")
+            allowedHeaders = listOf("Content-Type", "X-Gateway-Auth-Key")
             allowCredentials = true
         }
         return UrlBasedCorsConfigurationSource().apply {
