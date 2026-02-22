@@ -4,6 +4,7 @@ import me.saramquantgateway.domain.enum.auth.AuthProvider
 import me.saramquantgateway.infra.auth.dto.ManualLoginRequest
 import me.saramquantgateway.infra.auth.dto.ManualSignupRequest
 import me.saramquantgateway.infra.auth.service.AuthService
+import me.saramquantgateway.infra.oauth.lib.OAuthProperties
 import me.saramquantgateway.infra.security.CookieUtil
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
@@ -11,14 +12,39 @@ import jakarta.validation.Valid
 import org.springframework.beans.factory.annotation.Value
 import org.springframework.http.ResponseEntity
 import org.springframework.web.bind.annotation.*
+import org.springframework.web.util.UriComponentsBuilder
 import java.util.UUID
 
 @RestController
 class AuthController(
     private val authService: AuthService,
     private val cookieUtil: CookieUtil,
+    private val oauthProps: OAuthProperties,
     @param:Value("\${app.frontend-redirect-url}") private val frontendRedirectUrl: String,
 ) {
+
+    // ── OAuth initiation ──
+
+    @GetMapping("/oauth2/authorization/google")
+    fun googleAuthorize(response: HttpServletResponse) {
+        val url = UriComponentsBuilder.fromUriString("https://accounts.google.com/o/oauth2/v2/auth")
+            .queryParam("client_id", oauthProps.google.clientId)
+            .queryParam("redirect_uri", oauthProps.google.redirectUri)
+            .queryParam("response_type", "code")
+            .queryParam("scope", "email profile")
+            .build().toUriString()
+        response.sendRedirect(url)
+    }
+
+    @GetMapping("/oauth2/authorization/kakao")
+    fun kakaoAuthorize(response: HttpServletResponse) {
+        val url = UriComponentsBuilder.fromUriString("https://kauth.kakao.com/oauth/authorize")
+            .queryParam("client_id", oauthProps.kakao.clientId)
+            .queryParam("redirect_uri", oauthProps.kakao.redirectUri)
+            .queryParam("response_type", "code")
+            .build().toUriString()
+        response.sendRedirect(url)
+    }
 
     // ── OAuth callbacks ──
 
