@@ -37,4 +37,12 @@ class ProfileService(private val profileRepo: UserProfileRepository) {
             profileRepo.save(it)
         }
     }
+
+    @Transactional
+    fun clearImageUrl(userId: UUID) {
+        profileRepo.findByUserId(userId)?.let {
+            it.profileImageUrl = null
+            profileRepo.save(it)
+        }
+    }
 }

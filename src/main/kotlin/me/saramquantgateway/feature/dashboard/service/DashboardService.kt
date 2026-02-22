@@ -15,6 +15,7 @@ import me.saramquantgateway.feature.dashboard.dto.ScreenerFilter
 import me.saramquantgateway.feature.dashboard.dto.StockSearchResult
 import me.saramquantgateway.feature.dashboard.repository.DashboardQueryRepository
 import jakarta.persistence.EntityManager
+import org.springframework.cache.annotation.Cacheable
 import org.springframework.data.domain.PageRequest
 import org.springframework.data.domain.Sort
 import org.springframework.stereotype.Service
@@ -31,6 +32,7 @@ class DashboardService(
     private val em: EntityManager,
 ) {
 
+    @Cacheable("screener", key = "#filter.hashCode()")
     fun list(filter: ScreenerFilter): DashboardPage {
         if (filter.market == null || filter.hasAdvancedFilters()) return queryRepo.search(filter)
 
@@ -40,6 +42,7 @@ class DashboardService(
         else listByStock(market, filter.sector, pageable)
     }
 
+    @Cacheable("sectors", key = "#market?.name ?: 'ALL'")
     fun sectors(market: Market?): List<String> =
         if (market != null) stockRepo.findDistinctSectorsByMarket(market)
         else stockRepo.findDistinctSectors()
