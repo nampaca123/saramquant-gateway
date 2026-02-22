@@ -7,10 +7,10 @@ RUN chmod +x ./gradlew
 
 COPY settings.gradle.kts build.gradle.kts ./
 
-RUN --mount=type=cache,target=/root/.gradle ./gradlew --no-daemon -x test bootJar || true
+RUN --mount=type=cache,id=gradle-deps,target=/root/.gradle ./gradlew --no-daemon -x test bootJar || true
 
 COPY src src
-RUN --mount=type=cache,target=/root/.gradle ./gradlew --no-daemon -x test bootJar
+RUN --mount=type=cache,id=gradle-deps,target=/root/.gradle ./gradlew --no-daemon -x test bootJar
 
 FROM eclipse-temurin:25-jre
 WORKDIR /app
