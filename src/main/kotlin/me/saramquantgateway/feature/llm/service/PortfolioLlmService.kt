@@ -1,9 +1,11 @@
 package me.saramquantgateway.feature.llm.service
 
+import me.saramquantgateway.domain.entity.llm.PortfolioLlmAnalysis
 import me.saramquantgateway.domain.enum.market.Country
 import me.saramquantgateway.domain.enum.market.Maturity
 import me.saramquantgateway.domain.repository.fundamental.StockFundamentalRepository
 import me.saramquantgateway.domain.repository.indicator.StockIndicatorRepository
+import me.saramquantgateway.domain.repository.llm.PortfolioLlmAnalysisRepository
 import me.saramquantgateway.domain.repository.market.RiskFreeRateRepository
 import me.saramquantgateway.domain.repository.market.SectorAggregateRepository
 import me.saramquantgateway.domain.repository.portfolio.PortfolioHoldingRepository
@@ -16,8 +18,11 @@ import me.saramquantgateway.infra.llm.lib.LlmRouter
 import me.saramquantgateway.infra.connection.CalcServerClient
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
-import java.math.RoundingMode
+import java.time.LocalDate
 import java.util.UUID
+import java.util.concurrent.CompletableFuture
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.TimeUnit
 
 @Service
 class PortfolioLlmService(
@@ -29,11 +34,13 @@ class PortfolioLlmService(
     private val badgeRepo: RiskBadgeRepository,
     private val sectorAggRepo: SectorAggregateRepository,
     private val riskFreeRateRepo: RiskFreeRateRepository,
+    private val analysisRepo: PortfolioLlmAnalysisRepository,
     private val calcClient: CalcServerClient,
     private val promptBuilder: PromptBuilder,
     private val llmRouter: LlmRouter,
     private val props: LlmProperties,
 ) {
+    private val inFlight = ConcurrentHashMap<String, CompletableFuture<String>>()
 
     fun analyze(portfolioId: Long, userId: UUID, preset: String, lang: String): LlmAnalysisResponse {
         val portfolio = portfolioService.verifyOwnership(portfolioId, userId)
@@ -46,6 +53,54 @@ class PortfolioLlmService(
             )
         }
 
+        val today = LocalDate.now()
+        analysisRepo.findByPortfolioIdAndDateAndPresetAndLang(portfolioId, today, preset, lang)?.let {
+            return toResponse(it, true)
+        }
+
+        val cacheKey = "$portfolioId:$today:$preset:$lang"
+        val future = inFlight.computeIfAbsent(cacheKey) {
+            CompletableFuture.supplyAsync { generateAndCache(portfolioId, holdings, today, preset, lang) }
+        }
+
+        try {
+            val analysis = future.get(props.totalTimeout.toSeconds() + 5, TimeUnit.SECONDS)
+            return LlmAnalysisResponse(analysis, props.portfolioModel, false, LlmAnalysisResponse.disclaimer(lang))
+        } finally {
+            inFlight.remove(cacheKey)
+        }
+    }
+
+    fun invalidateCache(portfolioId: Long) {
+        analysisRepo.deleteByPortfolioId(portfolioId)
+    }
+
+    private fun generateAndCache(
+        portfolioId: Long,
+        holdings: List<me.saramquantgateway.domain.entity.portfolio.PortfolioHolding>,
+        today: LocalDate,
+        preset: String,
+        lang: String,
+    ): String {
+        val data = buildContextData(portfolioId, holdings, preset, lang)
+        val (system, user) = promptBuilder.buildPortfolioPrompt(data, preset, lang)
+        val result = llmRouter.complete(props.portfolioModel, system, user)
+
+        analysisRepo.save(
+            PortfolioLlmAnalysis(
+                portfolioId = portfolioId, date = today, preset = preset, lang = lang,
+                analysis = result, model = props.portfolioModel,
+            )
+        )
+        return result
+    }
+
+    private fun buildContextData(
+        portfolioId: Long,
+        holdings: List<me.saramquantgateway.domain.entity.portfolio.PortfolioHolding>,
+        preset: String,
+        lang: String,
+    ): PortfolioContextData {
         val stockIds = holdings.map { it.stockId }
         val stockMap = stockRepo.findByIdIn(stockIds).associateBy { it.id }
         val indicatorMap = indicatorRepo.findLatestByStockIds(stockIds).associateBy { it.stockId }
@@ -53,8 +108,8 @@ class PortfolioLlmService(
         val badgeMap = badgeRepo.findByStockIdIn(stockIds).associateBy { it.stockId }
 
         val totalValue = holdings.sumOf { it.shares.multiply(it.avgPrice).toDouble() }
-
         val needFundamentals = preset in setOf("financial_weakness", "aggressive")
+
         val holdingContexts = holdings.mapNotNull { h ->
             val stock = stockMap[h.stockId] ?: return@mapNotNull null
             val ind = indicatorMap[h.stockId]
@@ -89,7 +144,7 @@ class PortfolioLlmService(
         val benchmark = if (country == Country.KR) "KOSPI" else "S&P500"
 
         @Suppress("UNCHECKED_CAST")
-        val data = PortfolioContextData(
+        return PortfolioContextData(
             holdings = holdingContexts,
             riskScore = riskScore as? Map<String, Any?>,
             riskDecomp = riskDecomp as? Map<String, Any?>,
@@ -97,13 +152,13 @@ class PortfolioLlmService(
             riskFreeRate = riskFreeRate,
             benchmark = benchmark,
         )
-
-        val (system, user) = promptBuilder.buildPortfolioPrompt(data, preset, lang)
-        val result = llmRouter.complete(props.portfolioModel, system, user)
-
-        return LlmAnalysisResponse(
-            analysis = result, model = props.portfolioModel,
-            cached = false, disclaimer = LlmAnalysisResponse.disclaimer(lang),
-        )
     }
+
+    private fun toResponse(entity: PortfolioLlmAnalysis, cached: Boolean): LlmAnalysisResponse =
+        LlmAnalysisResponse(
+            analysis = entity.analysis,
+            model = entity.model,
+            cached = cached,
+            disclaimer = LlmAnalysisResponse.disclaimer(entity.lang),
+        )
 }

@@ -5,7 +5,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.http.MediaType
 import org.springframework.stereotype.Component
 import org.springframework.web.client.RestClient
-import java.time.Duration
+import org.springframework.web.client.RestClientResponseException
 
 @Component
 class CalcServerClient(
@@ -26,6 +26,9 @@ class CalcServerClient(
                 .uri(uri)
                 .retrieve()
                 .body(Map::class.java)
+        } catch (e: RestClientResponseException) {
+            log.warn("[CalcServerClient] GET {} → {} {}", path, e.statusCode, e.statusText)
+            parseErrorBody(e)
         } catch (e: Exception) {
             log.error("[CalcServerClient] GET {} failed: {}", path, e.message)
             null
@@ -40,9 +43,19 @@ class CalcServerClient(
                     .body(objectMapper.writeValueAsString(body))
             }
             req.retrieve().body(Map::class.java)
+        } catch (e: RestClientResponseException) {
+            log.warn("[CalcServerClient] POST {} → {} {}", path, e.statusCode, e.statusText)
+            parseErrorBody(e)
         } catch (e: Exception) {
             log.error("[CalcServerClient] POST {} failed: {}", path, e.message)
             null
+        }
+
+    private fun parseErrorBody(e: RestClientResponseException): Map<*, *>? =
+        try {
+            objectMapper.readValue(e.responseBodyAsString, Map::class.java)
+        } catch (_: Exception) {
+            mapOf("error" to (e.statusText ?: "Calc server error"))
         }
 
     private fun buildUri(path: String, params: Map<String, String>): String {

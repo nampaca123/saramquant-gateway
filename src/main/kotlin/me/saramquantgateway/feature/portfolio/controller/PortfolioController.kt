@@ -1,5 +1,6 @@
 package me.saramquantgateway.feature.portfolio.controller
 
+import me.saramquantgateway.domain.repository.llm.PortfolioLlmAnalysisRepository
 import me.saramquantgateway.feature.portfolio.dto.BuyRequest
 import me.saramquantgateway.feature.portfolio.dto.SellRequest
 import me.saramquantgateway.feature.portfolio.service.PortfolioService
@@ -15,6 +16,7 @@ import java.util.UUID
 class PortfolioController(
     private val portfolioService: PortfolioService,
     private val calcClient: CalcServerClient,
+    private val llmCacheRepo: PortfolioLlmAnalysisRepository,
 ) {
 
     @GetMapping
@@ -72,10 +74,47 @@ class PortfolioController(
         val diversification = calcClient.post("/internal/portfolios/diversification", body)
 
         return ResponseEntity.ok(mapOf(
-            "risk_score" to riskScore,
+            "risk_score" to invertRiskScore(riskScore),
             "risk_decomposition" to risk,
             "diversification" to diversification,
         ))
+    }
+
+    @GetMapping("/price-lookup")
+    fun priceLookup(
+        @RequestParam("stock_id") stockId: Long,
+        @RequestParam("date") date: String,
+    ): ResponseEntity<Any> {
+        currentUserId()
+        val body = mapOf("stock_id" to stockId, "date" to date)
+        val result = calcClient.post("/internal/portfolios/price-lookup", body)
+            ?: return ResponseEntity.ok(mapOf("found" to false))
+        return ResponseEntity.ok(result)
+    }
+
+    @GetMapping("/{id}/llm-history")
+    fun llmHistory(@PathVariable id: Long): ResponseEntity<Any> {
+        val userId = currentUserId()
+        portfolioService.verifyOwnership(id, userId)
+        val rows = llmCacheRepo.findByPortfolioIdOrderByCreatedAtDesc(id)
+        return ResponseEntity.ok(rows.map { mapOf(
+            "id" to it.id,
+            "date" to it.date,
+            "preset" to it.preset,
+            "lang" to it.lang,
+            "analysis" to it.analysis,
+            "model" to it.model,
+            "created_at" to it.createdAt,
+        )})
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun invertRiskScore(raw: Map<*, *>?): Map<*, *>? {
+        if (raw == null) return null
+        val score = (raw["score"] as? Number)?.toDouble() ?: return raw
+        val inverted = java.math.BigDecimal(100.0 - score)
+            .setScale(2, java.math.RoundingMode.HALF_UP).toDouble()
+        return (raw as Map<String, Any?>).toMutableMap().apply { this["score"] = inverted }
     }
 
     private fun currentUserId(): UUID =
