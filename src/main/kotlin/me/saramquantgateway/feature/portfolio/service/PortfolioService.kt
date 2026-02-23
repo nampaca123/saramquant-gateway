@@ -281,7 +281,7 @@ class PortfolioService(
     private fun UserPortfolio.toSummary() = PortfolioSummary(
         id = id,
         marketGroup = marketGroup,
-        holdingsCount = holdingRepo.findByPortfolioId(id).size,
+        holdingsCount = holdingRepo.countByPortfolioId(id).toInt(),
         createdAt = createdAt,
     )
 }

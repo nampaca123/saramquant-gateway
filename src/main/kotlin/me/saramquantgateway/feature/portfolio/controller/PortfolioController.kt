@@ -63,23 +63,18 @@ class PortfolioController(
         return ResponseEntity.noContent().build()
     }
 
+    @Suppress("UNCHECKED_CAST")
     @GetMapping("/{id}/analysis")
     fun analysis(@PathVariable id: Long): ResponseEntity<Any> {
         val userId = currentUserId()
         portfolioService.verifyOwnership(id, userId)
 
-        val body = mapOf("portfolio_id" to id)
-        val riskScore = calcClient.post("/internal/portfolios/risk-score", body)
-        val risk = calcClient.post("/internal/portfolios/risk", body)
-        val diversification = calcClient.post("/internal/portfolios/diversification", body)
-        val benchmark = calcClient.post("/internal/portfolios/benchmark-comparison", body)
+        val result = calcClient.post("/internal/portfolios/full-analysis", mapOf("portfolio_id" to id))
+            ?: return ResponseEntity.ok(emptyMap<String, Any>())
 
-        return ResponseEntity.ok(mapOf(
-            "risk_score" to invertRiskScore(riskScore),
-            "risk_decomposition" to risk,
-            "diversification" to diversification,
-            "benchmark_comparison" to benchmark,
-        ))
+        val mutable = (result as Map<String, Any?>).toMutableMap()
+        mutable["risk_score"] = invertRiskScore(mutable["risk_score"] as? Map<*, *>)
+        return ResponseEntity.ok(mutable)
     }
 
     @GetMapping("/price-lookup")
