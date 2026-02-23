@@ -8,6 +8,7 @@ import me.saramquantgateway.infra.user.dto.UserResponse
 import me.saramquantgateway.infra.auth.service.AuthService
 import me.saramquantgateway.infra.user.service.ProfileService
 import me.saramquantgateway.infra.user.service.UserService
+import me.saramquantgateway.feature.systememail.service.SystemEmailService
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
@@ -24,6 +25,7 @@ class UserController(
     private val profileImageService: ProfileImageService,
     private val authService: AuthService,
     private val cookieUtil: CookieUtil,
+    private val systemEmailService: SystemEmailService,
 ) {
 
     @GetMapping("/me")
@@ -68,8 +70,10 @@ class UserController(
     @DeleteMapping("/me")
     fun deactivateAccount(principal: Principal, response: HttpServletResponse): ResponseEntity<Void> {
         val userId = UUID.fromString(principal.name)
+        val user = userService.findById(userId) ?: return ResponseEntity.notFound().build()
         authService.logoutAll(userId)
         userService.deactivateUser(userId)
+        systemEmailService.sendDeactivationEmail(user)
         cookieUtil.clearAll(response)
         return ResponseEntity.noContent().build()
     }

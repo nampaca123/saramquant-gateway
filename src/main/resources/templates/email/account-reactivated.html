@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Welcome Back to SaramQuant</title>
+</head>
+<body style="margin:0;padding:0;background-color:#FDF6E3;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#FDF6E3;padding:40px 20px;">
+    <tr><td align="center">
+      <table role="presentation" width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;background-color:#FFFFFF;border-radius:16px;border:1px solid #F4F4F5;box-shadow:0 1px 3px rgba(0,0,0,0.05);overflow:hidden;">
+
+        <!-- Header -->
+        <tr><td style="padding:32px 40px 24px;">
+          <table role="presentation" cellpadding="0" cellspacing="0"><tr>
+            <td style="vertical-align:middle;">
+              <img th:src="${logoUrl}" alt="SaramQuant" width="40" height="40" style="display:block;border-radius:10px;" />
+            </td>
+            <td style="vertical-align:middle;padding-left:12px;">
+              <span style="font-size:16px;font-weight:700;color:#18181B;" th:text="${appName}">SaramQuant</span>
+            </td>
+          </tr></table>
+        </td></tr>
+
+        <!-- Gold line -->
+        <tr><td><div style="height:2px;background-color:#C8981E;"></div></td></tr>
+
+        <!-- Body -->
+        <tr><td style="padding:32px 40px;">
+          <h1 style="margin:0 0 20px;font-size:24px;font-weight:700;color:#18181B;">
+            Welcome back, <span th:text="${name}">User</span>.
+          </h1>
+          <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#3F3F46;">
+            Good to see you again. Your account is fully restored &#8212; portfolios, settings, and history are all exactly as you left them.
+          </p>
+          <p style="margin:0 0 28px;font-size:15px;line-height:1.6;color:#3F3F46;">
+            We'll keep doing what we do best: turning complex risk data into clear, actionable insights so you can invest with confidence.
+          </p>
+
+          <!-- Info box -->
+          <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color:#F4F4F5;border-radius:12px;margin-bottom:28px;">
+            <tr><td style="padding:20px 24px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td style="font-size:12px;font-weight:600;color:#A1A1AA;text-transform:uppercase;letter-spacing:0.05em;padding-bottom:6px;">Account</td>
+                  <td style="font-size:14px;color:#18181B;font-weight:500;padding-bottom:6px;text-align:right;" th:text="${email}">user@email.com</td>
+                </tr>
+                <tr>
+                  <td style="font-size:12px;font-weight:600;color:#A1A1AA;text-transform:uppercase;letter-spacing:0.05em;padding-bottom:6px;">Originally Joined</td>
+                  <td style="font-size:14px;color:#18181B;font-weight:500;padding-bottom:6px;text-align:right;" th:text="${originalJoinDate}">2025-01-15</td>
+                </tr>
+                <tr>
+                  <td style="font-size:12px;font-weight:600;color:#A1A1AA;text-transform:uppercase;letter-spacing:0.05em;">Reactivated</td>
+                  <td style="font-size:14px;color:#18181B;font-weight:500;text-align:right;" th:text="${reactivatedAt}">2026-02-24 12:00 UTC</td>
+                </tr>
+              </table>
+            </td></tr>
+          </table>
+
+          <!-- CTA -->
+          <table role="presentation" cellpadding="0" cellspacing="0" style="margin:0 auto;">
+            <tr><td align="center" style="border-radius:8px;background-color:#C8981E;">
+              <a href="https://www.saramquant.com" target="_blank" style="display:inline-block;padding:12px 32px;font-size:14px;font-weight:600;color:#FFFFFF;text-decoration:none;border-radius:8px;">
+                Go to Dashboard
+              </a>
+            </td></tr>
+          </table>
+        </td></tr>
+
+        <!-- Footer -->
+        <tr><td style="border-top:1px solid #F4F4F5;padding:24px 40px;text-align:center;">
+          <p style="margin:0 0 4px;font-size:12px;color:#A1A1AA;">
+            &copy; <span th:text="${currentYear}">2026</span> <span th:text="${appName}">SaramQuant</span>. All rights reserved.
+          </p>
+          <p style="margin:0;font-size:12px;color:#A1A1AA;">
+            This is an automated message from noreply@saramquant.com
+          </p>
+        </td></tr>
+
+      </table>
+    </td></tr>
+  </table>
+</body>
+</html>

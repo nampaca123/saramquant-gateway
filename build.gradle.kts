@@ -30,6 +30,10 @@ dependencies {
     implementation("org.springframework:spring-webflux")
     implementation("io.projectreactor.netty:reactor-netty-http")
 
+    implementation("org.springframework.boot:spring-boot-starter-thymeleaf")
+    implementation(platform("software.amazon.awssdk:bom:2.34.0"))
+    implementation("software.amazon.awssdk:sesv2")
+
     testImplementation("org.springframework.boot:spring-boot-starter-test")
 }
 

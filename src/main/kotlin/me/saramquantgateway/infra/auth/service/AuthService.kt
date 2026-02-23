@@ -12,6 +12,7 @@ import me.saramquantgateway.infra.oauth.lib.OAuthClient
 import me.saramquantgateway.infra.storage.service.ProfileImageService
 import me.saramquantgateway.infra.user.service.ProfileService
 import me.saramquantgateway.infra.user.service.UserService
+import me.saramquantgateway.feature.systememail.service.SystemEmailService
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -27,6 +28,7 @@ class AuthService(
     private val passwordEncoder: PasswordEncoder,
     private val googleClient: GoogleOAuthClient,
     private val kakaoClient: KakaoOAuthClient,
+    private val systemEmailService: SystemEmailService,
 ) {
 
     @Transactional
@@ -47,15 +49,18 @@ class AuthService(
             if (existing.provider != provider) {
                 throw DuplicateEmailException(existing.provider)
             }
-            if (!existing.isActive) userService.reactivateUser(existing)
+            val wasInactive = !existing.isActive
+            if (wasInactive) userService.reactivateUser(existing)
             user = existing
             userService.updateLastLogin(user.id)
+            if (wasInactive) systemEmailService.sendReactivationEmail(user)
         } else {
             user = userService.createOAuthUser(userInfo, provider)
             userInfo.imageUrl?.let { url ->
                 val bucketUrl = profileImageService.uploadFromUrl(user.id, url)
                 bucketUrl?.let { profileService.updateImageUrl(user.id, it) }
             }
+            systemEmailService.sendWelcomeEmail(user)
         }
 
         return issueTokens(user)
@@ -70,6 +75,7 @@ class AuthService(
         }
         val hash = passwordEncoder.encode(req.password)!!
         val user = userService.createManualUser(req.email, req.name, hash)
+        systemEmailService.sendWelcomeEmail(user)
         return issueTokens(user)
     }
 
@@ -83,8 +89,10 @@ class AuthService(
             throw InvalidCredentialsException()
         }
 
-        if (!user.isActive) userService.reactivateUser(user)
+        val wasInactive = !user.isActive
+        if (wasInactive) userService.reactivateUser(user)
         userService.updateLastLogin(user.id)
+        if (wasInactive) systemEmailService.sendReactivationEmail(user)
         return issueTokens(user)
     }
 
