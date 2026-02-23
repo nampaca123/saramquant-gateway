@@ -16,6 +16,8 @@ import me.saramquantgateway.feature.stock.dto.*
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.web.server.ResponseStatusException
+import java.math.BigDecimal
+import java.math.RoundingMode
 import java.time.LocalDate
 
 @Service
@@ -68,7 +70,7 @@ class StockService(
                 RiskBadgeDetail(
                     summaryTier = it.summaryTier,
                     date = it.date.toString(),
-                    dimensions = it.dimensions,
+                    dimensions = invertDimensionScores(it.dimensions),
                 )
             },
             indicators = indicator?.let {
@@ -140,6 +142,17 @@ class StockService(
                 )
             },
         )
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun invertDimensionScores(dimensions: Map<String, Any>): Map<String, Any> {
+        val dims = dimensions["dims"] as? List<Map<String, Any>> ?: return dimensions
+        val inverted = dims.map { dim ->
+            val score = (dim["score"] as? Number)?.toDouble() ?: return@map dim
+            val flipped = BigDecimal(100.0 - score).setScale(1, RoundingMode.HALF_UP).toDouble()
+            dim.toMutableMap().apply { this["score"] = flipped }
+        }
+        return dimensions.toMutableMap().apply { this["dims"] = inverted }
     }
 
     fun getBenchmark(symbol: String, market: Market, period: PricePeriod): BenchmarkComparisonResponse {
