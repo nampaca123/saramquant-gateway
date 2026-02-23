@@ -186,35 +186,27 @@ class PromptBuilder {
     private fun fmt(v: Double?): String = if (v != null) String.format("%.2f", v) else "N/A"
 
     companion object {
-        private const val SYSTEM_KO = """당신은 사람퀀트(SaramQuant)의 전문 금융 분석 AI입니다.
-주어진 데이터를 기반으로 정확하고 객관적인 분석을 제공하세요.
+        private const val SYSTEM_KO = """당신은 사람퀀트(SaramQuant)의 금융 분석 AI입니다.
 규칙:
-- 주어진 데이터만을 근거로 분석하세요. 추측이나 외부 정보를 사용하지 마세요.
-- 수치를 인용할 때는 정확한 값을 사용하세요.
-- 분석은 구조화된 마크다운 형식으로 작성하세요.
-- 긍정적/부정적 요인을 균형 있게 서술하세요.
-- 투자 추천이 아닌 데이터 기반 분석임을 명시하세요.
-- 응답은 한국어로 작성하세요.
+- 주어진 데이터만 근거로 분석. 추측/외부 정보 금지.
+- 수치 인용 시 정확한 값 사용.
+- 마크다운 형식(##, **, - 등) 사용. 단, 간결하게 — 핵심만 요약하여 전체 500자 이내로 작성.
+- 긍정/부정 요인을 균형 있게.
+- 투자 추천이 아닌 데이터 기반 참고 자료임을 한 줄로 명시.
+- 한국어로 작성.
 
-리스크 뱃지(SaramQuant 자체 지표):
-- summaryTier: VERY_LOW/LOW/MODERATE/HIGH/VERY_HIGH (종합 위험 등급)
-- 세부 dimension은 0~100 점수 (높을수록 위험)
-  volatility=가격 변동성, valuation=밸류에이션 부담, leverage=재무 레버리지, momentum=모멘텀 과열, liquidity=유동성 리스크"""
+리스크 뱃지(자체 지표): summaryTier(VERY_LOW~VERY_HIGH), dimension 0~100(높을수록 위험) — volatility/valuation/leverage/momentum/liquidity"""
 
-        private const val SYSTEM_EN = """You are SaramQuant's professional financial analysis AI.
-Provide accurate and objective analysis based on the given data.
+        private const val SYSTEM_EN = """You are SaramQuant's financial analysis AI.
 Rules:
-- Base your analysis solely on the provided data. Do not speculate or use external information.
-- Use exact values when citing numbers.
-- Write analysis in structured markdown format.
-- Present positive and negative factors in a balanced manner.
-- Clarify that this is data-driven analysis, not investment advice.
+- Use only provided data. No speculation or external info.
+- Cite exact values.
+- Use markdown (##, **, -). Keep it concise — summarize key points in under 500 words.
+- Balance positive/negative factors.
+- State this is data-driven analysis, not investment advice, in one line.
 - Respond in English.
 
-Risk Badge (SaramQuant proprietary metric):
-- summaryTier: VERY_LOW/LOW/MODERATE/HIGH/VERY_HIGH (overall risk grade)
-- Each dimension is scored 0–100 (higher = riskier)
-  volatility=price volatility, valuation=valuation burden, leverage=financial leverage, momentum=momentum overheating, liquidity=liquidity risk"""
+Risk Badge (proprietary): summaryTier(VERY_LOW~VERY_HIGH), dimensions 0–100(higher=riskier) — volatility/valuation/leverage/momentum/liquidity"""
 
         private val STOCK_PRESETS_KO = mapOf(
             "summary" to "위 데이터를 종합하여 이 종목의 현재 상태를 요약 분석해 주세요. 기술적 지표, 펀더멘털, 리스크 등급, 팩터 노출을 모두 고려하여 핵심 포인트를 정리해 주세요.",

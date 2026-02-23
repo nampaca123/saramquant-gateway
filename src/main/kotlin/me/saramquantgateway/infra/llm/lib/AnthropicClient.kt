@@ -17,7 +17,7 @@ class AnthropicClient(private val props: LlmProperties) : LlmClient {
     override fun complete(model: String, system: String, user: String): String {
         val body = mapOf(
             "model" to model,
-            "max_tokens" to 2048,
+            "max_tokens" to 1024,
             "system" to system,
             "messages" to listOf(mapOf("role" to "user", "content" to user)),
         )

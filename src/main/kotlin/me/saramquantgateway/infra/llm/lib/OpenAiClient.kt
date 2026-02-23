@@ -16,7 +16,7 @@ class OpenAiClient(private val props: LlmProperties) : LlmClient {
     override fun complete(model: String, system: String, user: String): String {
         val body = mapOf(
             "model" to model,
-            "max_completion_tokens" to 2048,
+            "max_completion_tokens" to 1024,
             "messages" to listOf(
                 mapOf("role" to "system", "content" to system),
                 mapOf("role" to "user", "content" to user),
