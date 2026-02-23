@@ -181,10 +181,12 @@ class DashboardQueryRepository(
 
     @Suppress("UNCHECKED_CAST")
     private fun parseDimensionTiers(json: String): Map<String, String>? = try {
-        val map = objectMapper.readValue(json, Map::class.java) as Map<String, Any>
-        map.entries.mapNotNull { (k, v) ->
-            val tier = (v as? Map<*, *>)?.get("tier")?.toString()
-            if (tier != null) k to tier else null
+        val root = objectMapper.readValue(json, Map::class.java) as Map<String, Any>
+        val list = root["dims"] as? List<Map<String, Any>> ?: emptyList()
+        list.mapNotNull { d ->
+            val name = d["name"]?.toString() ?: return@mapNotNull null
+            val tier = d["tier"]?.toString() ?: return@mapNotNull null
+            name to tier
         }.toMap().ifEmpty { null }
     } catch (_: Exception) {
         null

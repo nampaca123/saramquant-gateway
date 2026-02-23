@@ -156,14 +156,21 @@ class DashboardService(
             priceChangePercent = changePct,
             comparedDate = sorted?.getOrNull(1)?.date?.toString(),
             summaryTier = badge?.summaryTier,
-            dimensionTiers = badge?.dimensions?.entries?.mapNotNull { (k, v) ->
-                val tier = (v as? Map<*, *>)?.get("tier")?.toString()
-                if (tier != null) k to tier else null
-            }?.toMap(),
+            dimensionTiers = badge?.dimensions?.let(::extractDimensionTiers),
             beta = indicator?.beta,
             rsi14 = indicator?.rsi14,
             sharpe = indicator?.sharpe,
         )
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun extractDimensionTiers(dims: Map<String, Any>): Map<String, String>? {
+        val list = dims["dims"] as? List<Map<String, Any>> ?: return null
+        return list.mapNotNull { d ->
+            val name = d["name"]?.toString() ?: return@mapNotNull null
+            val tier = d["tier"]?.toString() ?: return@mapNotNull null
+            name to tier
+        }.toMap().ifEmpty { null }
     }
 
     private fun emptyPage(pageable: PageRequest) = DashboardPage(
