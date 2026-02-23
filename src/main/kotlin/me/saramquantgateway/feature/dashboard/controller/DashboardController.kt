@@ -1,6 +1,7 @@
 package me.saramquantgateway.feature.dashboard.controller
 
 import me.saramquantgateway.domain.enum.stock.Market
+import me.saramquantgateway.feature.dashboard.dto.DataFreshnessResponse
 import me.saramquantgateway.feature.dashboard.dto.DashboardPage
 import me.saramquantgateway.feature.dashboard.dto.ScreenerFilter
 import me.saramquantgateway.feature.dashboard.dto.StockSearchResult
@@ -75,4 +76,8 @@ class DashboardController(private val service: DashboardService) {
     @GetMapping("/sectors")
     fun sectors(@RequestParam(required = false) market: Market?): ResponseEntity<List<String>> =
         ResponseEntity.ok(service.sectors(market))
+
+    @GetMapping("/data-freshness")
+    fun dataFreshness(): ResponseEntity<DataFreshnessResponse> =
+        ResponseEntity.ok(service.dataFreshness())
 }

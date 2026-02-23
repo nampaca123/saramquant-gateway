@@ -9,6 +9,7 @@ import me.saramquantgateway.domain.repository.indicator.StockIndicatorRepository
 import me.saramquantgateway.domain.repository.riskbadge.RiskBadgeRepository
 import me.saramquantgateway.domain.repository.stock.DailyPriceRepository
 import me.saramquantgateway.domain.repository.stock.StockRepository
+import me.saramquantgateway.feature.dashboard.dto.DataFreshnessResponse
 import me.saramquantgateway.feature.dashboard.dto.DashboardPage
 import me.saramquantgateway.feature.dashboard.dto.DashboardStockItem
 import me.saramquantgateway.feature.dashboard.dto.ScreenerFilter
@@ -41,6 +42,9 @@ class DashboardService(
         return if (filter.tiers != null) listByTier(market, filter.tiers, filter.sector, pageable)
         else listByStock(market, filter.sector, pageable)
     }
+
+    @Cacheable("data-freshness")
+    fun dataFreshness(): DataFreshnessResponse = queryRepo.dataFreshness()
 
     @Cacheable("sectors", key = "#market?.name ?: 'ALL'")
     fun sectors(market: Market?): List<String> =

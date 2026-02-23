@@ -1,9 +1,11 @@
 package me.saramquantgateway.feature.dashboard.repository
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import me.saramquantgateway.feature.dashboard.dto.DataFreshnessResponse
 import me.saramquantgateway.feature.dashboard.dto.DashboardPage
 import me.saramquantgateway.feature.dashboard.dto.DashboardStockItem
 import me.saramquantgateway.feature.dashboard.dto.ScreenerFilter
+import java.sql.Timestamp
 import jakarta.persistence.EntityManager
 import org.springframework.stereotype.Repository
 import java.math.BigDecimal
@@ -190,6 +192,34 @@ class DashboardQueryRepository(
         }.toMap().ifEmpty { null }
     } catch (_: Exception) {
         null
+    }
+
+    fun dataFreshness(): DataFreshnessResponse {
+        val sql = """
+            SELECT
+              (SELECT dp.date::text FROM daily_prices dp JOIN stocks s ON s.id = dp.stock_id
+               WHERE s.market IN ('KR_KOSPI','KR_KOSDAQ') ORDER BY dp.date DESC LIMIT 1),
+              (SELECT dp.created_at FROM daily_prices dp JOIN stocks s ON s.id = dp.stock_id
+               WHERE s.market IN ('KR_KOSPI','KR_KOSDAQ') ORDER BY dp.date DESC LIMIT 1),
+              (SELECT dp.date::text FROM daily_prices dp JOIN stocks s ON s.id = dp.stock_id
+               WHERE s.market IN ('US_NYSE','US_NASDAQ') ORDER BY dp.date DESC LIMIT 1),
+              (SELECT dp.created_at FROM daily_prices dp JOIN stocks s ON s.id = dp.stock_id
+               WHERE s.market IN ('US_NYSE','US_NASDAQ') ORDER BY dp.date DESC LIMIT 1),
+              (SELECT MAX(fs.created_at) FROM financial_statements fs JOIN stocks s ON s.id = fs.stock_id
+               WHERE s.market IN ('KR_KOSPI','KR_KOSDAQ')),
+              (SELECT MAX(fs.created_at) FROM financial_statements fs JOIN stocks s ON s.id = fs.stock_id
+               WHERE s.market IN ('US_NYSE','US_NASDAQ'))
+        """.trimIndent()
+
+        val row = em.createNativeQuery(sql).singleResult as Array<*>
+        return DataFreshnessResponse(
+            krPriceDate = row[0] as? String,
+            krPriceCollectedAt = (row[1] as? Timestamp)?.toInstant()?.toString(),
+            usPriceDate = row[2] as? String,
+            usPriceCollectedAt = (row[3] as? Timestamp)?.toInstant()?.toString(),
+            krFinancialCollectedAt = (row[4] as? Timestamp)?.toInstant()?.toString(),
+            usFinancialCollectedAt = (row[5] as? Timestamp)?.toInstant()?.toString(),
+        )
     }
 
     private fun emptyPage(filter: ScreenerFilter) = DashboardPage(

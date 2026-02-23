@@ -75,3 +75,12 @@ data class StockSearchResult(
     val market: String,
     val sector: String?,
 )
+
+data class DataFreshnessResponse(
+    val krPriceDate: String?,
+    val krPriceCollectedAt: String?,
+    val usPriceDate: String?,
+    val usPriceCollectedAt: String?,
+    val krFinancialCollectedAt: String?,
+    val usFinancialCollectedAt: String?,
+)
