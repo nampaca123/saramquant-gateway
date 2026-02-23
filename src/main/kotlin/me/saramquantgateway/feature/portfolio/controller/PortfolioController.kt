@@ -72,11 +72,13 @@ class PortfolioController(
         val riskScore = calcClient.post("/internal/portfolios/risk-score", body)
         val risk = calcClient.post("/internal/portfolios/risk", body)
         val diversification = calcClient.post("/internal/portfolios/diversification", body)
+        val benchmark = calcClient.post("/internal/portfolios/benchmark-comparison", body)
 
         return ResponseEntity.ok(mapOf(
             "risk_score" to invertRiskScore(riskScore),
             "risk_decomposition" to risk,
             "diversification" to diversification,
+            "benchmark_comparison" to benchmark,
         ))
     }
 

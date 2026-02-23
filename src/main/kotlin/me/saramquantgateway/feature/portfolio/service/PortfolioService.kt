@@ -5,6 +5,8 @@ import me.saramquantgateway.domain.entity.portfolio.UserPortfolio
 import me.saramquantgateway.domain.repository.llm.PortfolioLlmAnalysisRepository
 import me.saramquantgateway.domain.repository.portfolio.PortfolioHoldingRepository
 import me.saramquantgateway.domain.repository.portfolio.UserPortfolioRepository
+import me.saramquantgateway.domain.repository.riskbadge.RiskBadgeRepository
+import me.saramquantgateway.domain.repository.stock.DailyPriceRepository
 import me.saramquantgateway.domain.repository.stock.StockRepository
 import me.saramquantgateway.feature.portfolio.dto.*
 import me.saramquantgateway.infra.connection.CalcServerClient
@@ -23,6 +25,8 @@ class PortfolioService(
     private val portfolioRepo: UserPortfolioRepository,
     private val holdingRepo: PortfolioHoldingRepository,
     private val stockRepo: StockRepository,
+    private val riskBadgeRepo: RiskBadgeRepository,
+    private val priceRepo: DailyPriceRepository,
     private val calcClient: CalcServerClient,
     private val llmCacheRepo: PortfolioLlmAnalysisRepository,
 ) {
@@ -35,26 +39,45 @@ class PortfolioService(
     fun getPortfolioDetail(portfolioId: Long, userId: UUID): PortfolioDetail {
         val portfolio = verifyOwnership(portfolioId, userId)
         val holdings = holdingRepo.findByPortfolioId(portfolioId)
-        val stockMap = if (holdings.isNotEmpty())
-            stockRepo.findByIdIn(holdings.map { it.stockId }).associateBy { it.id }
-        else emptyMap()
+        if (holdings.isEmpty()) {
+            return PortfolioDetail(portfolio.id, portfolio.marketGroup, emptyList(), portfolio.createdAt)
+        }
+
+        val stockIds = holdings.map { it.stockId }
+        val stockMap = stockRepo.findByIdIn(stockIds).associateBy { it.id }
+        val badgeMap = riskBadgeRepo.findByStockIdIn(stockIds).associateBy { it.stockId }
+        val priceMap = priceRepo.findTop2PerStockByStockIdIn(stockIds).groupBy { it.stockId }
 
         return PortfolioDetail(
             id = portfolio.id,
             marketGroup = portfolio.marketGroup,
             holdings = holdings.map { h ->
                 val stock = stockMap[h.stockId]
+                val badge = badgeMap[h.stockId]
+                val prices = priceMap[h.stockId]?.sortedByDescending { it.date }
+                val latest = prices?.firstOrNull()?.close
+                val prev = prices?.getOrNull(1)?.close
+                val changePct = if (latest != null && prev != null && prev.signum() != 0)
+                    latest.subtract(prev).multiply(BigDecimal(100)).divide(prev, 2, RoundingMode.HALF_UP).toDouble()
+                else null
+
                 HoldingDetail(
                     id = h.id,
                     stockId = h.stockId,
                     symbol = stock?.symbol ?: "?",
                     name = stock?.name ?: "Unknown",
+                    market = stock?.market?.name,
+                    sector = stock?.sector,
                     shares = h.shares,
                     avgPrice = h.avgPrice,
                     currency = h.currency,
                     purchasedAt = h.purchasedAt.toString(),
                     purchaseFxRate = h.purchaseFxRate,
                     priceSource = h.priceSource,
+                    latestClose = latest,
+                    priceChangePercent = changePct,
+                    summaryTier = badge?.summaryTier,
+                    dimensionTiers = badge?.dimensions?.let(::extractDimensionTiers),
                 )
             },
             createdAt = portfolio.createdAt,
@@ -215,6 +238,16 @@ class PortfolioService(
             HttpStatus.UNPROCESSABLE_ENTITY,
             "Could not resolve price. Please provide manual_price."
         )
+    }
+
+    @Suppress("UNCHECKED_CAST")
+    private fun extractDimensionTiers(dims: Map<String, Any>): Map<String, String>? {
+        val list = dims["dims"] as? List<Map<String, Any>> ?: return null
+        return list.mapNotNull { d ->
+            val name = d["name"]?.toString() ?: return@mapNotNull null
+            val tier = d["tier"]?.toString() ?: return@mapNotNull null
+            name to tier
+        }.toMap().ifEmpty { null }
     }
 
     private fun UserPortfolio.toSummary() = PortfolioSummary(

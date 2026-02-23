@@ -15,12 +15,18 @@ data class HoldingDetail(
     val stockId: Long,
     val symbol: String,
     val name: String,
+    val market: String? = null,
+    val sector: String? = null,
     val shares: BigDecimal,
     val avgPrice: BigDecimal,
     val currency: String,
     val purchasedAt: String,
     val purchaseFxRate: BigDecimal? = null,
     val priceSource: String,
+    val latestClose: BigDecimal? = null,
+    val priceChangePercent: Double? = null,
+    val summaryTier: String? = null,
+    val dimensionTiers: Map<String, String>? = null,
 )
 
 data class PortfolioDetail(
