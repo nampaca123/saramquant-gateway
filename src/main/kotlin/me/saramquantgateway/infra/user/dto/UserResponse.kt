@@ -11,6 +11,7 @@ data class UserResponse(
     val name: String,
     val provider: AuthProvider,
     val role: UserRole,
+    val createdAt: String,
     val profile: ProfileResponse?,
 ) {
     companion object {
@@ -20,6 +21,7 @@ data class UserResponse(
             name = user.name,
             provider = user.provider,
             role = user.role,
+            createdAt = user.createdAt.toString(),
             profile = profile,
         )
     }

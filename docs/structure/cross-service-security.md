@@ -3,12 +3,12 @@
 ## 전체 흐름
 
 ```
-Browser ──▶ Next.js (Proxy) ──▶ Gateway (Spring Boot) ──▶ Calc Server (Flask)
-                                       │                        │
-                                       │                   Railway Private Network
-                                       ▼                        │
-                                   Supabase (RLS)               ▼
-                                                     USA FS Collector (Flask)
+Browser ──▶ Next.js (Proxy) ──▶ Gateway (Spring Boot) ── Railway Private Network ──▶ Calc Server (Flask)
+                                       │                                                 │
+                                       │                                             Railway Private Network
+                                       ▼                                                 │
+                                   Supabase (RLS)                                        ▼
+                                                                                     USA FS Collector (Flask)
 ```
 
 각 서비스 경계마다 독립적인 보안 계층이 존재하며, 단일 계층이 뚫려도 다음 계층에서 차단되는 **Defense in Depth** 구조다.
