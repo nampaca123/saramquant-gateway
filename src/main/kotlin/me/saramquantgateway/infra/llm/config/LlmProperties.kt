@@ -12,6 +12,7 @@ data class LlmProperties(
     val fallbackModel: String = "gpt-5.2",
     val dailyLimit: Int = 20,
     val maxRetries: Int = 3,
+    val totalTimeout: Duration = Duration.ofSeconds(90),
 ) {
     data class ProviderConfig(
         val apiKey: String,

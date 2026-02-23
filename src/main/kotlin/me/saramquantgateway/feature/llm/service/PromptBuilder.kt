@@ -56,58 +56,61 @@ class PromptBuilder {
 
     private fun buildStockContext(d: StockContextData, lang: String): String {
         val sb = StringBuilder()
-        if (lang == "en") {
-            sb.appendLine("=== Stock Data ===")
-            sb.appendLine("Name: ${d.name} (${d.symbol}), Market: ${d.market}, Sector: ${d.sector ?: "N/A"}")
-            sb.appendLine("Latest Close: ${d.close?.toPlainString() ?: "N/A"}, Change: ${fmt(d.priceChange)}%, Date: ${d.dataDate ?: "N/A"}")
-            sb.appendLine("Risk Badge: ${d.summaryTier ?: "N/A"}")
-            d.badge?.let { sb.appendLine("Badge Dimensions: $it") }
-        } else {
-            sb.appendLine("=== 종목 데이터 ===")
-            sb.appendLine("종목명: ${d.name} (${d.symbol}), 시장: ${d.market}, 섹터: ${d.sector ?: "N/A"}")
-            sb.appendLine("최근 종가: ${d.close?.toPlainString() ?: "N/A"}, 등락률: ${fmt(d.priceChange)}%, 기준일: ${d.dataDate ?: "N/A"}")
-            sb.appendLine("리스크 등급: ${d.summaryTier ?: "N/A"}")
-            d.badge?.let { sb.appendLine("등급 세부: $it") }
+        val en = lang == "en"
+
+        sb.appendLine(if (en) "=== Stock Data ===" else "=== 종목 데이터 ===")
+        sb.appendLine(kv("Name" to d.name, "Symbol" to d.symbol, "Market" to d.market, "Sector" to d.sector))
+        sb.appendLine(kv("Close" to d.close?.toPlainString(), "Change%" to fmt(d.priceChange), "Date" to d.dataDate))
+
+        d.summaryTier?.let { tier ->
+            sb.appendLine(if (en) "Risk Tier: $tier" else "리스크 등급: $tier")
+            d.badge?.let { badge ->
+                val dims = badge.entries.joinToString(", ") { (k, v) -> "$k=$v" }
+                sb.appendLine(if (en) "Risk Scores (0=safe, 100=risky): $dims" else "리스크 세부 (0=안전, 100=위험): $dims")
+            }
         }
 
         d.indicator?.let { i ->
             sb.appendLine()
-            sb.appendLine(if (lang == "en") "--- Technical Indicators (${i.date}) ---" else "--- 기술적 지표 (${i.date}) ---")
-            sb.appendLine("RSI(14): ${dec(i.rsi14)}, MACD: ${dec(i.macd)}, Signal: ${dec(i.macdSignal)}, Hist: ${dec(i.macdHist)}")
-            sb.appendLine("Stoch K/D: ${dec(i.stochK)}/${dec(i.stochD)}, ADX: ${dec(i.adx14)}, +DI: ${dec(i.plusDi)}, -DI: ${dec(i.minusDi)}")
-            sb.appendLine("BB: ${dec(i.bbUpper)}/${dec(i.bbMiddle)}/${dec(i.bbLower)}, ATR: ${dec(i.atr14)}")
-            sb.appendLine("SMA20: ${dec(i.sma20)}, EMA20: ${dec(i.ema20)}, SAR: ${dec(i.sar)}")
-            sb.appendLine("Beta: ${dec(i.beta)}, Alpha: ${dec(i.alpha)}, Sharpe: ${dec(i.sharpe)}")
+            sb.appendLine(if (en) "--- Technical (${i.date}) ---" else "--- 기술적 지표 (${i.date}) ---")
+            sb.appendLine(kv("RSI14" to dec(i.rsi14), "MACD" to dec(i.macd), "Signal" to dec(i.macdSignal), "Hist" to dec(i.macdHist)))
+            sb.appendLine(kv("StochK" to dec(i.stochK), "StochD" to dec(i.stochD), "ADX" to dec(i.adx14), "+DI" to dec(i.plusDi), "-DI" to dec(i.minusDi)))
+            sb.appendLine(kv("BB" to "${dec(i.bbUpper)}/${dec(i.bbMiddle)}/${dec(i.bbLower)}", "ATR" to dec(i.atr14)))
+            sb.appendLine(kv("SMA20" to dec(i.sma20), "EMA20" to dec(i.ema20), "SAR" to dec(i.sar)))
+            sb.appendLine(kv("Beta" to dec(i.beta), "Alpha" to dec(i.alpha), "Sharpe" to dec(i.sharpe)))
         }
 
         d.fundamental?.let { f ->
             sb.appendLine()
-            sb.appendLine(if (lang == "en") "--- Fundamentals (${f.date}) ---" else "--- 펀더멘털 (${f.date}) ---")
-            sb.appendLine("PER: ${dec(f.per)}, PBR: ${dec(f.pbr)}, EPS: ${dec(f.eps)}, BPS: ${dec(f.bps)}")
-            sb.appendLine("ROE: ${dec(f.roe)}, Debt Ratio: ${dec(f.debtRatio)}, Op. Margin: ${dec(f.operatingMargin)}")
+            sb.appendLine(if (en) "--- Fundamentals (${f.date}) ---" else "--- 펀더멘털 (${f.date}) ---")
+            sb.appendLine(kv("PER" to dec(f.per), "PBR" to dec(f.pbr), "EPS" to dec(f.eps), "BPS" to dec(f.bps)))
+            sb.appendLine(kv("ROE" to dec(f.roe), "DebtRatio" to dec(f.debtRatio), "OpMargin" to dec(f.operatingMargin)))
         }
 
         d.sectorComparison?.let { s ->
             sb.appendLine()
-            sb.appendLine(if (lang == "en") "--- Sector Comparison (${s.sector}, ${s.stockCount} stocks) ---" else "--- 섹터 비교 (${s.sector}, ${s.stockCount}개 종목) ---")
-            sb.appendLine("Median PER: ${dec(s.medianPer)}, PBR: ${dec(s.medianPbr)}, ROE: ${dec(s.medianRoe)}")
-            sb.appendLine("Median Op.Margin: ${dec(s.medianOperatingMargin)}, Debt Ratio: ${dec(s.medianDebtRatio)}")
+            sb.appendLine(if (en) "--- Sector: ${s.sector} (${s.stockCount} stocks) ---" else "--- 섹터: ${s.sector} (${s.stockCount}개) ---")
+            sb.appendLine(kv("MedPER" to dec(s.medianPer), "MedPBR" to dec(s.medianPbr), "MedROE" to dec(s.medianRoe)))
+            sb.appendLine(kv("MedOpMargin" to dec(s.medianOperatingMargin), "MedDebtRatio" to dec(s.medianDebtRatio)))
         }
 
         d.factorExposure?.let { f ->
             sb.appendLine()
-            sb.appendLine(if (lang == "en") "--- Factor Exposure (${f.date}) ---" else "--- 팩터 노출 (${f.date}) ---")
-            sb.appendLine("Size: ${dec(f.sizeZ)}, Value: ${dec(f.valueZ)}, Momentum: ${dec(f.momentumZ)}")
-            sb.appendLine("Volatility: ${dec(f.volatilityZ)}, Quality: ${dec(f.qualityZ)}, Leverage: ${dec(f.leverageZ)}")
+            sb.appendLine(if (en) "--- Factor Exposure (${f.date}) ---" else "--- 팩터 노출 (${f.date}) ---")
+            sb.appendLine(kv("Size" to dec(f.sizeZ), "Value" to dec(f.valueZ), "Momentum" to dec(f.momentumZ)))
+            sb.appendLine(kv("Volatility" to dec(f.volatilityZ), "Quality" to dec(f.qualityZ), "Leverage" to dec(f.leverageZ)))
         }
 
         d.riskFreeRate?.let {
             sb.appendLine()
-            sb.appendLine(if (lang == "en") "Risk-Free Rate: ${it.toPlainString()}%" else "무위험 이자율: ${it.toPlainString()}%")
+            sb.appendLine(if (en) "RiskFreeRate: ${it.toPlainString()}%" else "무위험이자율: ${it.toPlainString()}%")
         }
 
         return sb.toString().trimEnd()
     }
+
+    private fun kv(vararg pairs: Pair<String, String?>): String =
+        pairs.filter { it.second != null }.joinToString(", ") { "${it.first}: ${it.second}" }
 
     private fun buildPortfolioContext(d: PortfolioContextData, preset: String, lang: String): String {
         val sb = StringBuilder()
@@ -171,7 +174,12 @@ class PromptBuilder {
 - 분석은 구조화된 마크다운 형식으로 작성하세요.
 - 긍정적/부정적 요인을 균형 있게 서술하세요.
 - 투자 추천이 아닌 데이터 기반 분석임을 명시하세요.
-- 응답은 한국어로 작성하세요."""
+- 응답은 한국어로 작성하세요.
+
+리스크 뱃지(SaramQuant 자체 지표):
+- summaryTier: VERY_LOW/LOW/MODERATE/HIGH/VERY_HIGH (종합 위험 등급)
+- 세부 dimension은 0~100 점수 (높을수록 위험)
+  volatility=가격 변동성, valuation=밸류에이션 부담, leverage=재무 레버리지, momentum=모멘텀 과열, liquidity=유동성 리스크"""
 
         private const val SYSTEM_EN = """You are SaramQuant's professional financial analysis AI.
 Provide accurate and objective analysis based on the given data.
@@ -181,7 +189,12 @@ Rules:
 - Write analysis in structured markdown format.
 - Present positive and negative factors in a balanced manner.
 - Clarify that this is data-driven analysis, not investment advice.
-- Respond in English."""
+- Respond in English.
+
+Risk Badge (SaramQuant proprietary metric):
+- summaryTier: VERY_LOW/LOW/MODERATE/HIGH/VERY_HIGH (overall risk grade)
+- Each dimension is scored 0–100 (higher = riskier)
+  volatility=price volatility, valuation=valuation burden, leverage=financial leverage, momentum=momentum overheating, liquidity=liquidity risk"""
 
         private val STOCK_PRESETS_KO = mapOf(
             "summary" to "위 데이터를 종합하여 이 종목의 현재 상태를 요약 분석해 주세요. 기술적 지표, 펀더멘털, 리스크 등급, 팩터 노출을 모두 고려하여 핵심 포인트를 정리해 주세요.",

@@ -67,7 +67,7 @@ class StockLlmService(
         }
 
         try {
-            val analysis = future.get(35, TimeUnit.SECONDS)
+            val analysis = future.get(props.totalTimeout.toSeconds() + 5, TimeUnit.SECONDS)
             return LlmAnalysisResponse(analysis, props.stockModel, false, LlmAnalysisResponse.disclaimer(lang))
         } finally {
             inFlight.remove(cacheKey)
