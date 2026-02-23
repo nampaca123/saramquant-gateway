@@ -15,11 +15,11 @@ class VisitStatsService(
 ) {
 
     fun getStats(startDate: LocalDate?, endDate: LocalDate?): VisitStatsResponse {
-        val dateClause = buildDateClause(startDate, endDate)
+        val (dateClause, params) = buildDateClause(startDate, endDate)
 
-        val clusters = queryClusters(dateClause)
-        val hourly = queryHourly(dateClause)
-        val paths = queryPaths(dateClause)
+        val clusters = queryClusters(dateClause, params)
+        val hourly = queryHourly(dateClause, params)
+        val paths = queryPaths(dateClause, params)
 
         val totalVisits = clusters.sumOf { it.visitCount }
         val uniqueCountries = clusters.map { it.country }.distinct().size
@@ -33,15 +33,29 @@ class VisitStatsService(
         )
     }
 
-    private fun buildDateClause(startDate: LocalDate?, endDate: LocalDate?): String {
+    private fun buildDateClause(startDate: LocalDate?, endDate: LocalDate?): Pair<String, Map<String, Any>> {
         val parts = mutableListOf<String>()
-        if (startDate != null) parts += "a.created_at >= '$startDate'::date"
-        if (endDate != null) parts += "a.created_at < ('$endDate'::date + INTERVAL '1 day')"
-        return if (parts.isEmpty()) "" else " AND ${parts.joinToString(" AND ")}"
+        val params = mutableMapOf<String, Any>()
+        if (startDate != null) {
+            parts += "a.created_at >= :startDate"
+            params["startDate"] = startDate
+        }
+        if (endDate != null) {
+            parts += "a.created_at < :endDateNext"
+            params["endDateNext"] = endDate.plusDays(1)
+        }
+        val clause = if (parts.isEmpty()) "" else " AND ${parts.joinToString(" AND ")}"
+        return clause to params
     }
 
-    @Suppress("UNCHECKED_CAST")
-    private fun queryClusters(dateClause: String): List<VisitCluster> {
+    private fun <T> nativeQuery(sql: String, params: Map<String, Any>): List<Array<Any?>> {
+        val query = em.createNativeQuery(sql)
+        params.forEach { (k, v) -> query.setParameter(k, v) }
+        @Suppress("UNCHECKED_CAST")
+        return query.resultList as List<Array<Any?>>
+    }
+
+    private fun queryClusters(dateClause: String, params: Map<String, Any>): List<VisitCluster> {
         val sql = """
             SELECT g.country, g.region_1, g.region_2, g.latitude, g.longitude,
                    COUNT(DISTINCT (DATE(a.created_at AT TIME ZONE 'Asia/Seoul'), a.ip_geolocation_id)) AS visit_count
@@ -54,8 +68,7 @@ class VisitStatsService(
             ORDER BY visit_count DESC
         """.trimIndent()
 
-        val rows = em.createNativeQuery(sql).resultList as List<Array<Any?>>
-        return rows.map { row ->
+        return nativeQuery<Any>(sql, params).map { row ->
             VisitCluster(
                 country = row[0] as String,
                 region1 = row[1] as? String ?: "",
@@ -67,8 +80,7 @@ class VisitStatsService(
         }
     }
 
-    @Suppress("UNCHECKED_CAST")
-    private fun queryHourly(dateClause: String): List<HourlyCount> {
+    private fun queryHourly(dateClause: String, params: Map<String, Any>): List<HourlyCount> {
         val sql = """
             SELECT EXTRACT(HOUR FROM a.created_at AT TIME ZONE 'Asia/Seoul')::int AS hour,
                    COUNT(DISTINCT (DATE(a.created_at AT TIME ZONE 'Asia/Seoul'), a.ip_geolocation_id)) AS count
@@ -77,13 +89,11 @@ class VisitStatsService(
             GROUP BY hour ORDER BY hour
         """.trimIndent()
 
-        val rows = em.createNativeQuery(sql).resultList as List<Array<Any?>>
-        val map = rows.associate { (it[0] as Number).toInt() to (it[1] as Number).toInt() }
+        val map = nativeQuery<Any>(sql, params).associate { (it[0] as Number).toInt() to (it[1] as Number).toInt() }
         return (0..23).map { HourlyCount(it, map.getOrDefault(it, 0)) }
     }
 
-    @Suppress("UNCHECKED_CAST")
-    private fun queryPaths(dateClause: String): List<PathCount> {
+    private fun queryPaths(dateClause: String, params: Map<String, Any>): List<PathCount> {
         val sql = """
             SELECT a.path, COUNT(DISTINCT (DATE(a.created_at AT TIME ZONE 'Asia/Seoul'), a.ip_geolocation_id)) AS count
             FROM audit_log a
@@ -91,7 +101,6 @@ class VisitStatsService(
             GROUP BY a.path ORDER BY count DESC LIMIT 20
         """.trimIndent()
 
-        val rows = em.createNativeQuery(sql).resultList as List<Array<Any?>>
-        return rows.map { PathCount(path = it[0] as String, count = (it[1] as Number).toInt()) }
+        return nativeQuery<Any>(sql, params).map { PathCount(path = it[0] as String, count = (it[1] as Number).toInt()) }
     }
 }
