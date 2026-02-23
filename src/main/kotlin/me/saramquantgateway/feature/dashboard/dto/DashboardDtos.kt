@@ -77,10 +77,8 @@ data class StockSearchResult(
 )
 
 data class DataFreshnessResponse(
-    val krPriceDate: String?,
-    val krPriceCollectedAt: String?,
-    val usPriceDate: String?,
-    val usPriceCollectedAt: String?,
-    val krFinancialCollectedAt: String?,
-    val usFinancialCollectedAt: String?,
+    val krPriceUpdatedAt: String?,
+    val usPriceUpdatedAt: String?,
+    val krFinancialUpdatedAt: String?,
+    val usFinancialUpdatedAt: String?,
 )
