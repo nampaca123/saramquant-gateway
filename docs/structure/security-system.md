@@ -103,7 +103,7 @@ AES 암호문은 매번 다른 IV로 생성되어 직접 검색 불가하므로,
 
 ---
 
-## 5. SQL Injection 방어 (Gateway)
+## 5. SQL Injection 방어 (학습용)
 
 ### SQL Injection이란?
 
