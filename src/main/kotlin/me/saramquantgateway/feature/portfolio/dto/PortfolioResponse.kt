@@ -27,6 +27,10 @@ data class HoldingDetail(
     val priceChangePercent: Double? = null,
     val summaryTier: String? = null,
     val dimensionTiers: Map<String, String>? = null,
+    val unrealizedPnl: BigDecimal? = null,
+    val unrealizedPnlPercent: Double? = null,
+    val currentValue: BigDecimal? = null,
+    val costBasis: BigDecimal? = null,
 )
 
 data class PortfolioDetail(
@@ -34,4 +38,8 @@ data class PortfolioDetail(
     val marketGroup: String,
     val holdings: List<HoldingDetail>,
     val createdAt: Instant,
+    val totalCost: BigDecimal? = null,
+    val totalValue: BigDecimal? = null,
+    val totalPnl: BigDecimal? = null,
+    val totalPnlPercent: Double? = null,
 )

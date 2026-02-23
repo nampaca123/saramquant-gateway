@@ -48,39 +48,67 @@ class PortfolioService(
         val badgeMap = riskBadgeRepo.findByStockIdIn(stockIds).associateBy { it.stockId }
         val priceMap = priceRepo.findTop2PerStockByStockIdIn(stockIds).groupBy { it.stockId }
 
+        var totalCost = BigDecimal.ZERO
+        var totalValue = BigDecimal.ZERO
+
+        val holdingDetails = holdings.map { h ->
+            val stock = stockMap[h.stockId]
+            val badge = badgeMap[h.stockId]
+            val prices = priceMap[h.stockId]?.sortedByDescending { it.date }
+            val latest = prices?.firstOrNull()?.close
+            val prev = prices?.getOrNull(1)?.close
+            val changePct = if (latest != null && prev != null && prev.signum() != 0)
+                latest.subtract(prev).multiply(BigDecimal(100)).divide(prev, 2, RoundingMode.HALF_UP).toDouble()
+            else null
+
+            val cost = h.avgPrice.multiply(h.shares)
+            val value = latest?.multiply(h.shares)
+            val pnl = if (value != null) value.subtract(cost) else null
+            val pnlPct = if (pnl != null && cost.signum() != 0)
+                pnl.multiply(BigDecimal(100)).divide(cost, 2, RoundingMode.HALF_UP).toDouble()
+            else null
+
+            totalCost = totalCost.add(cost)
+            if (value != null) totalValue = totalValue.add(value)
+
+            HoldingDetail(
+                id = h.id,
+                stockId = h.stockId,
+                symbol = stock?.symbol ?: "?",
+                name = stock?.name ?: "Unknown",
+                market = stock?.market?.name,
+                sector = stock?.sector,
+                shares = h.shares,
+                avgPrice = h.avgPrice,
+                currency = h.currency,
+                purchasedAt = h.purchasedAt.toString(),
+                purchaseFxRate = h.purchaseFxRate,
+                priceSource = h.priceSource,
+                latestClose = latest,
+                priceChangePercent = changePct,
+                summaryTier = badge?.summaryTier,
+                dimensionTiers = badge?.dimensions?.let(::extractDimensionTiers),
+                unrealizedPnl = pnl?.setScale(2, RoundingMode.HALF_UP),
+                unrealizedPnlPercent = pnlPct,
+                currentValue = value?.setScale(2, RoundingMode.HALF_UP),
+                costBasis = cost.setScale(2, RoundingMode.HALF_UP),
+            )
+        }
+
+        val totalPnl = totalValue.subtract(totalCost)
+        val totalPnlPct = if (totalCost.signum() != 0)
+            totalPnl.multiply(BigDecimal(100)).divide(totalCost, 2, RoundingMode.HALF_UP).toDouble()
+        else null
+
         return PortfolioDetail(
             id = portfolio.id,
             marketGroup = portfolio.marketGroup,
-            holdings = holdings.map { h ->
-                val stock = stockMap[h.stockId]
-                val badge = badgeMap[h.stockId]
-                val prices = priceMap[h.stockId]?.sortedByDescending { it.date }
-                val latest = prices?.firstOrNull()?.close
-                val prev = prices?.getOrNull(1)?.close
-                val changePct = if (latest != null && prev != null && prev.signum() != 0)
-                    latest.subtract(prev).multiply(BigDecimal(100)).divide(prev, 2, RoundingMode.HALF_UP).toDouble()
-                else null
-
-                HoldingDetail(
-                    id = h.id,
-                    stockId = h.stockId,
-                    symbol = stock?.symbol ?: "?",
-                    name = stock?.name ?: "Unknown",
-                    market = stock?.market?.name,
-                    sector = stock?.sector,
-                    shares = h.shares,
-                    avgPrice = h.avgPrice,
-                    currency = h.currency,
-                    purchasedAt = h.purchasedAt.toString(),
-                    purchaseFxRate = h.purchaseFxRate,
-                    priceSource = h.priceSource,
-                    latestClose = latest,
-                    priceChangePercent = changePct,
-                    summaryTier = badge?.summaryTier,
-                    dimensionTiers = badge?.dimensions?.let(::extractDimensionTiers),
-                )
-            },
+            holdings = holdingDetails,
             createdAt = portfolio.createdAt,
+            totalCost = totalCost.setScale(2, RoundingMode.HALF_UP),
+            totalValue = totalValue.setScale(2, RoundingMode.HALF_UP),
+            totalPnl = totalPnl.setScale(2, RoundingMode.HALF_UP),
+            totalPnlPercent = totalPnlPct,
         )
     }
 
