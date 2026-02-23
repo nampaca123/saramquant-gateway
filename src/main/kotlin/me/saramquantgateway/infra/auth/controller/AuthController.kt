@@ -64,11 +64,19 @@ class AuthController(
     fun signup(
         @Valid @RequestBody req: ManualSignupRequest,
         response: HttpServletResponse,
-    ): ResponseEntity<Void> {
-        val result = authService.manualSignup(req)
-        cookieUtil.setAccessToken(response, result.accessToken)
-        cookieUtil.setRefreshToken(response, result.refreshToken)
-        return ResponseEntity.ok().build()
+    ): ResponseEntity<Map<String, String>> {
+        try {
+            val result = authService.manualSignup(req)
+            cookieUtil.setAccessToken(response, result.accessToken)
+            cookieUtil.setRefreshToken(response, result.refreshToken)
+            return ResponseEntity.ok().build()
+        } catch (_: AuthService.AccountDeactivatedException) {
+            return ResponseEntity.status(409)
+                .body(mapOf("code" to "ACCOUNT_DEACTIVATED", "message" to "Account deactivated. Log in to reactivate."))
+        } catch (_: AuthService.EmailAlreadyExistsException) {
+            return ResponseEntity.status(409)
+                .body(mapOf("code" to "EMAIL_EXISTS", "message" to "Email already in use."))
+        }
     }
 
     @PostMapping("/api/auth/login")
@@ -89,10 +97,15 @@ class AuthController(
         val rawToken = cookieUtil.extractRefreshToken(request)
             ?: return ResponseEntity.status(401).build()
 
-        val result = authService.refresh(rawToken)
-        cookieUtil.setAccessToken(response, result.accessToken)
-        cookieUtil.setRefreshToken(response, result.refreshToken)
-        return ResponseEntity.ok().build()
+        try {
+            val result = authService.refresh(rawToken)
+            cookieUtil.setAccessToken(response, result.accessToken)
+            cookieUtil.setRefreshToken(response, result.refreshToken)
+            return ResponseEntity.ok().build()
+        } catch (_: AuthService.AccountDeactivatedException) {
+            cookieUtil.clearAll(response)
+            return ResponseEntity.status(403).build()
+        }
     }
 
     @PostMapping("/api/auth/logout")

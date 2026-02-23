@@ -21,6 +21,8 @@ class UserService(
 
     fun findByEmail(email: String): User? = userRepo.findByEmailHash(hasher.hash(email))
 
+    fun findActiveByEmail(email: String): User? = userRepo.findByEmailHashAndIsActiveTrue(hasher.hash(email))
+
     fun findById(id: UUID): User? = userRepo.findById(id).orElse(null)
 
     @Transactional
@@ -63,7 +65,19 @@ class UserService(
     }
 
     @Transactional
-    fun deleteUser(userId: UUID) {
-        userRepo.deleteById(userId)
+    fun deactivateUser(userId: UUID) {
+        userRepo.findById(userId).ifPresent {
+            it.isActive = false
+            it.deactivatedAt = Instant.now()
+            userRepo.save(it)
+        }
+    }
+
+    @Transactional
+    fun reactivateUser(user: User) {
+        user.isActive = true
+        user.deactivatedAt = null
+        user.lastLoginAt = Instant.now()
+        userRepo.save(user)
     }
 }

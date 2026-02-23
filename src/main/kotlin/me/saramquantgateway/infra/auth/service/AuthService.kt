@@ -47,6 +47,7 @@ class AuthService(
             if (existing.provider != provider) {
                 throw DuplicateEmailException(existing.provider)
             }
+            if (!existing.isActive) userService.reactivateUser(existing)
             user = existing
             userService.updateLastLogin(user.id)
         } else {
@@ -62,7 +63,11 @@ class AuthService(
 
     @Transactional
     fun manualSignup(req: ManualSignupRequest): AuthResult {
-        userService.findByEmail(req.email)?.let { throw EmailAlreadyExistsException() }
+        val existing = userService.findByEmail(req.email)
+        if (existing != null) {
+            if (!existing.isActive) throw AccountDeactivatedException()
+            throw EmailAlreadyExistsException()
+        }
         val hash = passwordEncoder.encode(req.password)!!
         val user = userService.createManualUser(req.email, req.name, hash)
         return issueTokens(user)
@@ -78,6 +83,7 @@ class AuthService(
             throw InvalidCredentialsException()
         }
 
+        if (!user.isActive) userService.reactivateUser(user)
         userService.updateLastLogin(user.id)
         return issueTokens(user)
     }
@@ -87,6 +93,8 @@ class AuthService(
             ?: throw RefreshTokenService.InvalidRefreshTokenException()
         val userId = UUID.fromString(claims.subject)
         val user = userService.findById(userId) ?: throw RefreshTokenService.InvalidRefreshTokenException()
+
+        if (!user.isActive) throw AccountDeactivatedException()
 
         val newRefreshToken = refreshTokenService.rotate(rawRefreshToken)
         val newAccessToken = jwtProvider.generateAccessToken(user.id, user.email, user.provider, user.role)
@@ -111,4 +119,5 @@ class AuthService(
 
     class EmailAlreadyExistsException : RuntimeException("Email already in use")
     class InvalidCredentialsException : RuntimeException("Invalid email or password")
+    class AccountDeactivatedException : RuntimeException("Account is deactivated. Please log in to reactivate.")
 }

@@ -31,6 +31,7 @@ class UserController(
         val userId = UUID.fromString(principal.name)
         val user = userService.findById(userId)
             ?: return ResponseEntity.notFound().build()
+        if (!user.isActive) return ResponseEntity.status(403).build()
         val profile = profileService.getByUserId(userId)
         return ResponseEntity.ok(UserResponse.from(user, profile))
     }
@@ -65,10 +66,10 @@ class UserController(
     }
 
     @DeleteMapping("/me")
-    fun deleteAccount(principal: Principal, response: HttpServletResponse): ResponseEntity<Void> {
+    fun deactivateAccount(principal: Principal, response: HttpServletResponse): ResponseEntity<Void> {
         val userId = UUID.fromString(principal.name)
         authService.logoutAll(userId)
-        userService.deleteUser(userId)
+        userService.deactivateUser(userId)
         cookieUtil.clearAll(response)
         return ResponseEntity.noContent().build()
     }

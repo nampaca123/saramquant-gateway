@@ -125,9 +125,6 @@ class PortfolioService(
         if (!isKr && portfolio.marketGroup != "US")
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "US stock cannot be added to KR portfolio")
 
-        if (isKr && req.shares.stripTrailingZeros().scale() > 0)
-            throw ResponseStatusException(HttpStatus.BAD_REQUEST, "KR shares must be integer")
-
         val resolved = resolvePrice(req)
         val price = resolved.first
         val fxRate = if (!isKr) resolved.second else null

@@ -7,4 +7,6 @@ import java.util.UUID
 interface UserRepository : JpaRepository<User, UUID> {
 
     fun findByEmailHash(emailHash: String): User?
+
+    fun findByEmailHashAndIsActiveTrue(emailHash: String): User?
 }

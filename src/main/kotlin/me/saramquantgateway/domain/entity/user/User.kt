@@ -41,6 +41,12 @@ class User(
     @Column(nullable = false, columnDefinition = "user_role_type")
     val role: UserRole = UserRole.STANDARD,
 
+    @Column(name = "is_active", nullable = false)
+    var isActive: Boolean = true,
+
+    @Column(name = "deactivated_at")
+    var deactivatedAt: Instant? = null,
+
     @Column(name = "created_at", nullable = false, updatable = false)
     val createdAt: Instant = Instant.now(),
 
