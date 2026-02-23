@@ -1,11 +1,14 @@
 package me.saramquantgateway.feature.llm.service
 
+import me.saramquantgateway.domain.entity.stock.DailyPrice
 import me.saramquantgateway.domain.entity.stock.Stock
+import me.saramquantgateway.domain.enum.fundamental.ReportType
 import me.saramquantgateway.domain.enum.market.Country
 import me.saramquantgateway.domain.enum.market.Maturity
 import me.saramquantgateway.domain.enum.stock.Market
 import me.saramquantgateway.domain.repository.llm.StockLlmAnalysisRepository
 import me.saramquantgateway.domain.repository.factor.FactorExposureRepository
+import me.saramquantgateway.domain.repository.fundamental.FinancialStatementRepository
 import me.saramquantgateway.domain.repository.fundamental.StockFundamentalRepository
 import me.saramquantgateway.domain.repository.indicator.StockIndicatorRepository
 import me.saramquantgateway.domain.repository.market.RiskFreeRateRepository
@@ -35,6 +38,7 @@ class StockLlmService(
     private val priceRepo: DailyPriceRepository,
     private val indicatorRepo: StockIndicatorRepository,
     private val fundamentalRepo: StockFundamentalRepository,
+    private val financialRepo: FinancialStatementRepository,
     private val badgeRepo: RiskBadgeRepository,
     private val sectorAggRepo: SectorAggregateRepository,
     private val factorRepo: FactorExposureRepository,
@@ -89,15 +93,25 @@ class StockLlmService(
     }
 
     private fun buildContextData(stock: Stock): StockContextData {
-        val prices = priceRepo.findTop2ByStockIdOrderByDateDesc(stock.id)
-        val latest = prices.firstOrNull()
-        val prev = prices.getOrNull(1)
-        val changePercent = if (latest != null && prev != null && prev.close.signum() != 0)
-            latest.close.subtract(prev.close)
-                .divide(prev.close, 6, RoundingMode.HALF_UP)
-                .multiply(BigDecimal(100))
-                .toDouble()
-        else null
+        val today = LocalDate.now()
+        val yearAgo = today.minusYears(1)
+        val history = priceRepo.findByStockIdAndDateBetweenOrderByDateDesc(stock.id, yearAgo, today)
+        val latest = history.firstOrNull()
+        val prev = history.getOrNull(1)
+
+        val changePercent = pctReturn(prev, latest)
+        val weekReturn = periodReturn(latest, history, 7)
+        val monthReturn = periodReturn(latest, history, 30)
+        val threeMonthReturn = periodReturn(latest, history, 90)
+        val week52High = history.maxOfOrNull { it.high }
+        val week52Low = history.minOfOrNull { it.low }
+
+        val financials = financialRepo.findByStockIdOrderByFiscalYearDescReportTypeDesc(stock.id)
+        val latestFY = financials.firstOrNull { it.reportType == ReportType.FY }
+        val prevFY = financials.filter { it.reportType == ReportType.FY }.getOrNull(1)
+
+        val marketCap = if (latest != null && latestFY?.sharesOutstanding != null)
+            latest.close.multiply(BigDecimal(latestFY.sharesOutstanding)) else null
 
         val indicator = indicatorRepo.findTop1ByStockIdOrderByDateDesc(stock.id)
         val fundamental = fundamentalRepo.findTop1ByStockIdOrderByDateDesc(stock.id)
@@ -115,6 +129,12 @@ class StockLlmService(
             close = latest?.close,
             priceChange = changePercent,
             dataDate = latest?.date?.toString(),
+            weekReturn = weekReturn,
+            monthReturn = monthReturn,
+            threeMonthReturn = threeMonthReturn,
+            week52High = week52High,
+            week52Low = week52Low,
+            marketCap = marketCap,
             badge = badge?.dimensions,
             summaryTier = badge?.summaryTier,
             indicator = indicator?.let {
@@ -150,8 +170,43 @@ class StockLlmService(
                     volatilityZ = it.volatilityZ, qualityZ = it.qualityZ, leverageZ = it.leverageZ,
                 )
             },
+            financialStatement = latestFY?.let { fy ->
+                FinancialStatementSnapshot(
+                    fiscalYear = fy.fiscalYear,
+                    revenue = fy.revenue,
+                    operatingIncome = fy.operatingIncome,
+                    netIncome = fy.netIncome,
+                    totalAssets = fy.totalAssets,
+                    totalEquity = fy.totalEquity,
+                    revenueGrowthPct = growthPct(prevFY?.revenue, fy.revenue),
+                    netIncomeGrowthPct = growthPct(prevFY?.netIncome, fy.netIncome),
+                )
+            },
             riskFreeRate = riskFreeRate,
         )
+    }
+
+    private fun pctReturn(from: DailyPrice?, to: DailyPrice?): Double? {
+        if (from == null || to == null || from.close.signum() == 0) return null
+        return to.close.subtract(from.close)
+            .divide(from.close, 6, RoundingMode.HALF_UP)
+            .multiply(BD_100).toDouble()
+    }
+
+    private fun periodReturn(latest: DailyPrice?, history: List<DailyPrice>, daysAgo: Long): Double? {
+        if (latest == null) return null
+        val target = history.firstOrNull { it.date <= latest.date.minusDays(daysAgo) } ?: return null
+        return pctReturn(target, latest)
+    }
+
+    private fun growthPct(prev: BigDecimal?, curr: BigDecimal?): Double? {
+        if (prev == null || curr == null || prev.signum() == 0) return null
+        return curr.subtract(prev).divide(prev.abs(), 6, RoundingMode.HALF_UP)
+            .multiply(BD_100).toDouble()
+    }
+
+    companion object {
+        private val BD_100 = BigDecimal(100)
     }
 
     private fun toResponse(entity: StockLlmAnalysis, cached: Boolean): LlmAnalysisResponse =

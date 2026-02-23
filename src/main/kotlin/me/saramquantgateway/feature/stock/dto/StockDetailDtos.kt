@@ -61,6 +61,13 @@ data class FactorExposureSnapshot(
     val volatilityZ: BigDecimal?, val qualityZ: BigDecimal?, val leverageZ: BigDecimal?,
 )
 
+data class FinancialStatementSnapshot(
+    val fiscalYear: Int,
+    val revenue: BigDecimal?, val operatingIncome: BigDecimal?, val netIncome: BigDecimal?,
+    val totalAssets: BigDecimal?, val totalEquity: BigDecimal?,
+    val revenueGrowthPct: Double?, val netIncomeGrowthPct: Double?,
+)
+
 data class CachedLlmAnalysis(
     val preset: String,
     val lang: String,

@@ -1,6 +1,7 @@
 package me.saramquantgateway.feature.llm.service
 
 import me.saramquantgateway.feature.stock.dto.FactorExposureSnapshot
+import me.saramquantgateway.feature.stock.dto.FinancialStatementSnapshot
 import me.saramquantgateway.feature.stock.dto.FundamentalSnapshot
 import me.saramquantgateway.feature.stock.dto.IndicatorSnapshot
 import me.saramquantgateway.feature.stock.dto.SectorComparisonSnapshot
@@ -10,11 +11,15 @@ import java.math.BigDecimal
 data class StockContextData(
     val name: String, val symbol: String, val market: String, val sector: String?,
     val close: BigDecimal?, val priceChange: Double?, val dataDate: String?,
+    val weekReturn: Double?, val monthReturn: Double?, val threeMonthReturn: Double?,
+    val week52High: BigDecimal?, val week52Low: BigDecimal?,
+    val marketCap: BigDecimal?,
     val badge: Map<String, Any>?, val summaryTier: String?,
     val indicator: IndicatorSnapshot?,
     val fundamental: FundamentalSnapshot?,
     val sectorComparison: SectorComparisonSnapshot?,
     val factorExposure: FactorExposureSnapshot?,
+    val financialStatement: FinancialStatementSnapshot?,
     val riskFreeRate: BigDecimal?,
 )
 
@@ -61,6 +66,11 @@ class PromptBuilder {
         sb.appendLine(if (en) "=== Stock Data ===" else "=== 종목 데이터 ===")
         sb.appendLine(kv("Name" to d.name, "Symbol" to d.symbol, "Market" to d.market, "Sector" to d.sector))
         sb.appendLine(kv("Close" to d.close?.toPlainString(), "Change%" to fmt(d.priceChange), "Date" to d.dataDate))
+        sb.appendLine(kv("1W" to fmt(d.weekReturn), "1M" to fmt(d.monthReturn), "3M" to fmt(d.threeMonthReturn)))
+        if (d.week52High != null || d.week52Low != null) {
+            sb.appendLine(kv("52wHigh" to d.week52High?.toPlainString(), "52wLow" to d.week52Low?.toPlainString()))
+        }
+        d.marketCap?.let { sb.appendLine(if (en) "MarketCap: ${it.toPlainString()}" else "시가총액: ${it.toPlainString()}") }
 
         d.summaryTier?.let { tier ->
             sb.appendLine(if (en) "Risk Tier: $tier" else "리스크 등급: $tier")
@@ -85,6 +95,16 @@ class PromptBuilder {
             sb.appendLine(if (en) "--- Fundamentals (${f.date}) ---" else "--- 펀더멘털 (${f.date}) ---")
             sb.appendLine(kv("PER" to dec(f.per), "PBR" to dec(f.pbr), "EPS" to dec(f.eps), "BPS" to dec(f.bps)))
             sb.appendLine(kv("ROE" to dec(f.roe), "DebtRatio" to dec(f.debtRatio), "OpMargin" to dec(f.operatingMargin)))
+        }
+
+        d.financialStatement?.let { fs ->
+            sb.appendLine()
+            sb.appendLine(if (en) "--- Financial Statement (FY${fs.fiscalYear}) ---" else "--- 재무제표 (FY${fs.fiscalYear}) ---")
+            sb.appendLine(kv("Revenue" to dec(fs.revenue), "OpIncome" to dec(fs.operatingIncome), "NetIncome" to dec(fs.netIncome)))
+            sb.appendLine(kv("TotalAssets" to dec(fs.totalAssets), "TotalEquity" to dec(fs.totalEquity)))
+            if (fs.revenueGrowthPct != null || fs.netIncomeGrowthPct != null) {
+                sb.appendLine(kv("RevenueGrowth%" to fmt(fs.revenueGrowthPct), "NetIncomeGrowth%" to fmt(fs.netIncomeGrowthPct)))
+            }
         }
 
         d.sectorComparison?.let { s ->
