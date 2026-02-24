@@ -45,8 +45,6 @@ class JwtAuthenticationFilter(
                 val authorities = listOf(SimpleGrantedAuthority("ROLE_$role"))
                 val auth = UsernamePasswordAuthenticationToken(claims.subject, null, authorities)
                 SecurityContextHolder.getContext().authentication = auth
-            } else {
-                cookieUtil.clearAll(response)
             }
         }
 
