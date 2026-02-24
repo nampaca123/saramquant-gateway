@@ -54,11 +54,7 @@ class PortfolioLlmService(
         }
 
         val today = LocalDate.now()
-        analysisRepo.findByPortfolioIdAndDateAndPresetAndLang(portfolioId, today, preset, lang)?.let {
-            return toResponse(it, true)
-        }
-
-        val cacheKey = "$portfolioId:$today:$preset:$lang"
+        val cacheKey = "$portfolioId:$today:$preset:$lang:${System.nanoTime()}"
         val future = inFlight.computeIfAbsent(cacheKey) {
             CompletableFuture.supplyAsync { generateAndCache(portfolioId, holdings, today, preset, lang) }
         }
@@ -69,10 +65,6 @@ class PortfolioLlmService(
         } finally {
             inFlight.remove(cacheKey)
         }
-    }
-
-    fun invalidateCache(portfolioId: Long) {
-        analysisRepo.deleteByPortfolioId(portfolioId)
     }
 
     private fun generateAndCache(
@@ -154,11 +146,4 @@ class PortfolioLlmService(
         )
     }
 
-    private fun toResponse(entity: PortfolioLlmAnalysis, cached: Boolean): LlmAnalysisResponse =
-        LlmAnalysisResponse(
-            analysis = entity.analysis,
-            model = entity.model,
-            cached = cached,
-            disclaimer = LlmAnalysisResponse.disclaimer(entity.lang),
-        )
 }

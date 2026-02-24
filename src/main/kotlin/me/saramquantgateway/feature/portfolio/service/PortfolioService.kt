@@ -2,7 +2,6 @@ package me.saramquantgateway.feature.portfolio.service
 
 import me.saramquantgateway.domain.entity.portfolio.PortfolioHolding
 import me.saramquantgateway.domain.entity.portfolio.UserPortfolio
-import me.saramquantgateway.domain.repository.llm.PortfolioLlmAnalysisRepository
 import me.saramquantgateway.domain.repository.portfolio.PortfolioHoldingRepository
 import me.saramquantgateway.domain.repository.portfolio.UserPortfolioRepository
 import me.saramquantgateway.domain.repository.riskbadge.RiskBadgeRepository
@@ -28,7 +27,6 @@ class PortfolioService(
     private val riskBadgeRepo: RiskBadgeRepository,
     private val priceRepo: DailyPriceRepository,
     private val calcClient: CalcServerClient,
-    private val llmCacheRepo: PortfolioLlmAnalysisRepository,
 ) {
 
     fun getPortfolios(userId: UUID): List<PortfolioSummary> {
@@ -165,8 +163,6 @@ class PortfolioService(
             )
         }
 
-        llmCacheRepo.deleteByPortfolioId(portfolioId)
-
         return HoldingDetail(
             id = holding.id,
             stockId = holding.stockId,
@@ -201,7 +197,6 @@ class PortfolioService(
             }
             else -> throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot sell more than owned")
         }
-        llmCacheRepo.deleteByPortfolioId(portfolioId)
     }
 
     @Transactional
@@ -212,14 +207,12 @@ class PortfolioService(
         if (holding.portfolioId != portfolioId)
             throw ResponseStatusException(HttpStatus.FORBIDDEN, "Holding does not belong to this portfolio")
         holdingRepo.delete(holding)
-        llmCacheRepo.deleteByPortfolioId(portfolioId)
     }
 
     @Transactional
     fun reset(portfolioId: Long, userId: UUID) {
         verifyOwnership(portfolioId, userId)
         holdingRepo.deleteByPortfolioId(portfolioId)
-        llmCacheRepo.deleteByPortfolioId(portfolioId)
     }
 
     fun verifyOwnership(portfolioId: Long, userId: UUID): UserPortfolio {
