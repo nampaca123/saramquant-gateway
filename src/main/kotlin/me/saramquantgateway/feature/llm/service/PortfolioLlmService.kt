@@ -17,6 +17,7 @@ import me.saramquantgateway.infra.llm.config.LlmProperties
 import me.saramquantgateway.infra.llm.lib.LlmRouter
 import me.saramquantgateway.infra.connection.CalcServerClient
 import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
 import java.time.LocalDate
@@ -57,6 +58,11 @@ class PortfolioLlmService(
         }
 
         val today = LocalDate.now()
+
+        analysisRepo.findByPortfolioIdAndDateAndPresetAndLang(portfolioId, today, preset, lang)?.let {
+            return LlmAnalysisResponse(it.analysis, it.model, true, LlmAnalysisResponse.disclaimer(lang))
+        }
+
         val cacheKey = "$portfolioId:$today:$preset:$lang"
         val future = inFlight.computeIfAbsent(cacheKey) {
             CompletableFuture.supplyAsync({ generateAndCache(portfolioId, holdings, today, preset, lang) }, llmExecutor)
@@ -81,12 +87,16 @@ class PortfolioLlmService(
         val (system, user) = promptBuilder.buildPortfolioPrompt(data, preset, lang)
         val result = llmRouter.complete(props.portfolioModel, system, user)
 
-        analysisRepo.save(
-            PortfolioLlmAnalysis(
-                portfolioId = portfolioId, date = today, preset = preset, lang = lang,
-                analysis = result, model = props.portfolioModel,
+        try {
+            analysisRepo.save(
+                PortfolioLlmAnalysis(
+                    portfolioId = portfolioId, date = today, preset = preset, lang = lang,
+                    analysis = result, model = props.portfolioModel,
+                )
             )
-        )
+        } catch (_: DataIntegrityViolationException) {
+            // race condition: 동시 요청이 먼저 INSERT 완료한 경우 → 무시하고 결과만 반환
+        }
         return result
     }
 
@@ -129,9 +139,7 @@ class PortfolioLlmService(
             )
         }
 
-        val riskScore = calcClient.post("/internal/portfolios/risk-score", mapOf("portfolio_id" to portfolioId))
-        val riskDecomp = calcClient.post("/internal/portfolios/risk", mapOf("portfolio_id" to portfolioId))
-        val diversification = calcClient.post("/internal/portfolios/diversification", mapOf("portfolio_id" to portfolioId))
+        val analysis = calcClient.post("/internal/portfolios/full-analysis", mapOf("portfolio_id" to portfolioId))
 
         val firstStock = stockMap.values.firstOrNull()
         val country = firstStock?.let { Country.forMarket(it.market) } ?: Country.KR
@@ -141,9 +149,9 @@ class PortfolioLlmService(
         @Suppress("UNCHECKED_CAST")
         return PortfolioContextData(
             holdings = holdingContexts,
-            riskScore = riskScore as? Map<String, Any?>,
-            riskDecomp = riskDecomp as? Map<String, Any?>,
-            diversification = diversification as? Map<String, Any?>,
+            riskScore = analysis?.get("risk_score") as? Map<String, Any?>,
+            riskDecomp = analysis?.get("risk_decomposition") as? Map<String, Any?>,
+            diversification = analysis?.get("diversification") as? Map<String, Any?>,
             riskFreeRate = riskFreeRate,
             benchmark = benchmark,
         )

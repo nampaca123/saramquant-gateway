@@ -22,6 +22,7 @@ import me.saramquantgateway.feature.stock.dto.*
 import me.saramquantgateway.infra.llm.config.LlmProperties
 import me.saramquantgateway.infra.llm.lib.LlmRouter
 import org.springframework.beans.factory.annotation.Qualifier
+import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.web.server.ResponseStatusException
@@ -86,12 +87,15 @@ class StockLlmService(
         val (system, user) = promptBuilder.buildStockPrompt(data, preset, lang)
         val result = llmRouter.complete(props.stockModel, system, user)
 
-        analysisRepo.save(
-            StockLlmAnalysis(
-                stockId = stock.id, date = today, preset = preset, lang = lang,
-                analysis = result, model = props.stockModel,
+        try {
+            analysisRepo.save(
+                StockLlmAnalysis(
+                    stockId = stock.id, date = today, preset = preset, lang = lang,
+                    analysis = result, model = props.stockModel,
+                )
             )
-        )
+        } catch (_: DataIntegrityViolationException) {
+        }
         return result
     }
 
