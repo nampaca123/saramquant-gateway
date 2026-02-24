@@ -16,12 +16,14 @@ import me.saramquantgateway.feature.portfolio.service.PortfolioService
 import me.saramquantgateway.infra.llm.config.LlmProperties
 import me.saramquantgateway.infra.llm.lib.LlmRouter
 import me.saramquantgateway.infra.connection.CalcServerClient
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
 import java.time.LocalDate
 import java.util.UUID
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
 
 @Service
@@ -39,6 +41,7 @@ class PortfolioLlmService(
     private val promptBuilder: PromptBuilder,
     private val llmRouter: LlmRouter,
     private val props: LlmProperties,
+    @Qualifier("llmExecutor") private val llmExecutor: Executor,
 ) {
     private val inFlight = ConcurrentHashMap<String, CompletableFuture<String>>()
 
@@ -54,9 +57,9 @@ class PortfolioLlmService(
         }
 
         val today = LocalDate.now()
-        val cacheKey = "$portfolioId:$today:$preset:$lang:${System.nanoTime()}"
+        val cacheKey = "$portfolioId:$today:$preset:$lang"
         val future = inFlight.computeIfAbsent(cacheKey) {
-            CompletableFuture.supplyAsync { generateAndCache(portfolioId, holdings, today, preset, lang) }
+            CompletableFuture.supplyAsync({ generateAndCache(portfolioId, holdings, today, preset, lang) }, llmExecutor)
         }
 
         try {

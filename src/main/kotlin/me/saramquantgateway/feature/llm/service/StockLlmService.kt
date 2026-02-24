@@ -21,6 +21,7 @@ import me.saramquantgateway.feature.llm.dto.LlmAnalysisResponse
 import me.saramquantgateway.feature.stock.dto.*
 import me.saramquantgateway.infra.llm.config.LlmProperties
 import me.saramquantgateway.infra.llm.lib.LlmRouter
+import org.springframework.beans.factory.annotation.Qualifier
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.web.server.ResponseStatusException
@@ -29,6 +30,7 @@ import java.math.RoundingMode
 import java.time.LocalDate
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.Executor
 import java.util.concurrent.TimeUnit
 
 @Service
@@ -46,6 +48,7 @@ class StockLlmService(
     private val promptBuilder: PromptBuilder,
     private val llmRouter: LlmRouter,
     private val props: LlmProperties,
+    @Qualifier("llmExecutor") private val llmExecutor: Executor,
 ) {
     private val inFlight = ConcurrentHashMap<String, CompletableFuture<String>>()
 
@@ -67,7 +70,7 @@ class StockLlmService(
 
         val cacheKey = "${stock.id}:$today:$preset:$lang"
         val future = inFlight.computeIfAbsent(cacheKey) {
-            CompletableFuture.supplyAsync { generateAndCache(stock, today, preset, lang) }
+            CompletableFuture.supplyAsync({ generateAndCache(stock, today, preset, lang) }, llmExecutor)
         }
 
         try {
