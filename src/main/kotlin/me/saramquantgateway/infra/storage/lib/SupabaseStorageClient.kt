@@ -13,6 +13,7 @@ class SupabaseStorageClient(private val props: SupabaseStorageProperties) {
         rest.post()
             .uri("${props.url}/object/${props.bucket}/$path")
             .header("Authorization", "Bearer ${props.secretKey}")
+            .header("x-upsert", "true")
             .contentType(MediaType.parseMediaType(contentType))
             .body(bytes)
             .retrieve()

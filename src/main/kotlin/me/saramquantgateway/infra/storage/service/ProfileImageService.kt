@@ -25,6 +25,7 @@ class ProfileImageService(private val storage: SupabaseStorageClient) {
         }
 
     fun uploadFromBytes(userId: UUID, bytes: ByteArray, contentType: String): String {
+        delete(userId)
         val ext = if (contentType.contains("png")) "png" else "jpg"
         return storage.upload("profiles/$userId.$ext", bytes, contentType)
     }
