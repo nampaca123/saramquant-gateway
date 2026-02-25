@@ -4,6 +4,9 @@ import me.saramquantgateway.domain.entity.user.User
 import me.saramquantgateway.domain.enum.auth.AuthProvider
 import me.saramquantgateway.infra.auth.dto.ManualLoginRequest
 import me.saramquantgateway.infra.auth.dto.ManualSignupRequest
+import me.saramquantgateway.infra.auth.dto.ResetPasswordRequest
+import me.saramquantgateway.infra.systememail.enum.VerificationPurpose
+import me.saramquantgateway.infra.systememail.service.EmailVerificationService
 import me.saramquantgateway.infra.jwt.lib.JwtProvider
 import me.saramquantgateway.infra.jwt.service.RefreshTokenService
 import me.saramquantgateway.infra.oauth.lib.GoogleOAuthClient
@@ -12,7 +15,7 @@ import me.saramquantgateway.infra.oauth.lib.OAuthClient
 import me.saramquantgateway.infra.storage.service.ProfileImageService
 import me.saramquantgateway.infra.user.service.ProfileService
 import me.saramquantgateway.infra.user.service.UserService
-import me.saramquantgateway.feature.systememail.service.SystemEmailService
+import me.saramquantgateway.infra.systememail.service.SystemEmailService
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -29,6 +32,7 @@ class AuthService(
     private val googleClient: GoogleOAuthClient,
     private val kakaoClient: KakaoOAuthClient,
     private val systemEmailService: SystemEmailService,
+    private val emailVerificationService: EmailVerificationService,
 ) {
 
     @Transactional
@@ -68,6 +72,7 @@ class AuthService(
 
     @Transactional
     fun manualSignup(req: ManualSignupRequest): AuthResult {
+        emailVerificationService.assertVerified(req.email, VerificationPurpose.SIGNUP, req.verificationId)
         val existing = userService.findByEmail(req.email)
         if (existing != null) {
             if (!existing.isActive) throw AccountDeactivatedException()
@@ -77,6 +82,16 @@ class AuthService(
         val user = userService.createManualUser(req.email, req.name, hash)
         systemEmailService.sendWelcomeEmail(user)
         return issueTokens(user)
+    }
+
+    @Transactional
+    fun resetPassword(req: ResetPasswordRequest) {
+        emailVerificationService.assertVerified(req.email, VerificationPurpose.PASSWORD_RESET, req.verificationId)
+        val user = userService.findActiveByEmail(req.email)
+            ?: throw InvalidResetTargetException()
+        if (user.provider != AuthProvider.MANUAL || user.passwordHash == null) throw InvalidResetTargetException()
+        user.passwordHash = passwordEncoder.encode(req.newPassword)
+        refreshTokenService.revokeAll(user.id)
     }
 
     fun manualLogin(req: ManualLoginRequest): AuthResult {
@@ -128,4 +143,5 @@ class AuthService(
     class EmailAlreadyExistsException : RuntimeException("Email already in use")
     class InvalidCredentialsException : RuntimeException("Invalid email or password")
     class AccountDeactivatedException : RuntimeException("Account is deactivated. Please log in to reactivate.")
+    class InvalidResetTargetException : RuntimeException("Cannot reset password for this account")
 }

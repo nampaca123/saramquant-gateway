@@ -3,7 +3,9 @@ package me.saramquantgateway.infra.auth.controller
 import me.saramquantgateway.domain.enum.auth.AuthProvider
 import me.saramquantgateway.infra.auth.dto.ManualLoginRequest
 import me.saramquantgateway.infra.auth.dto.ManualSignupRequest
+import me.saramquantgateway.infra.auth.dto.ResetPasswordRequest
 import me.saramquantgateway.infra.auth.service.AuthService
+import me.saramquantgateway.infra.systememail.service.EmailVerificationService
 import me.saramquantgateway.infra.oauth.lib.OAuthProperties
 import me.saramquantgateway.infra.security.CookieUtil
 import jakarta.servlet.http.HttpServletRequest
@@ -70,12 +72,31 @@ class AuthController(
             cookieUtil.setAccessToken(response, result.accessToken)
             cookieUtil.setRefreshToken(response, result.refreshToken)
             return ResponseEntity.ok().build()
+        } catch (_: EmailVerificationService.EmailNotVerifiedException) {
+            return ResponseEntity.status(403)
+                .body(mapOf("code" to "EMAIL_NOT_VERIFIED", "message" to "Email not verified."))
         } catch (_: AuthService.AccountDeactivatedException) {
             return ResponseEntity.status(409)
                 .body(mapOf("code" to "ACCOUNT_DEACTIVATED", "message" to "Account deactivated. Log in to reactivate."))
         } catch (_: AuthService.EmailAlreadyExistsException) {
             return ResponseEntity.status(409)
                 .body(mapOf("code" to "EMAIL_EXISTS", "message" to "Email already in use."))
+        }
+    }
+
+    @PostMapping("/api/auth/reset-password")
+    fun resetPassword(
+        @Valid @RequestBody req: ResetPasswordRequest,
+    ): ResponseEntity<Map<String, String>> {
+        try {
+            authService.resetPassword(req)
+            return ResponseEntity.ok().build()
+        } catch (_: EmailVerificationService.EmailNotVerifiedException) {
+            return ResponseEntity.status(403)
+                .body(mapOf("code" to "EMAIL_NOT_VERIFIED", "message" to "Email not verified."))
+        } catch (_: AuthService.InvalidResetTargetException) {
+            return ResponseEntity.status(400)
+                .body(mapOf("code" to "INVALID_RESET_TARGET", "message" to "Cannot reset password."))
         }
     }
 

@@ -35,7 +35,7 @@ class User(
     val providerId: String,
 
     @Column(name = "password_hash", length = 60)
-    val passwordHash: String? = null,
+    var passwordHash: String? = null,
 
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, columnDefinition = "user_role_type")

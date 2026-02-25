@@ -8,7 +8,7 @@ import me.saramquantgateway.infra.user.dto.UserResponse
 import me.saramquantgateway.infra.auth.service.AuthService
 import me.saramquantgateway.infra.user.service.ProfileService
 import me.saramquantgateway.infra.user.service.UserService
-import me.saramquantgateway.feature.systememail.service.SystemEmailService
+import me.saramquantgateway.infra.systememail.service.SystemEmailService
 import jakarta.servlet.http.HttpServletResponse
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity

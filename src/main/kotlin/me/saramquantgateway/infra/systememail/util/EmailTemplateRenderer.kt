@@ -1,4 +1,4 @@
-package me.saramquantgateway.feature.systememail.util
+package me.saramquantgateway.infra.systememail.util
 
 import org.springframework.stereotype.Component
 import org.thymeleaf.TemplateEngine

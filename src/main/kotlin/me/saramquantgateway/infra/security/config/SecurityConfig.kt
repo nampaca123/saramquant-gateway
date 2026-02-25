@@ -43,6 +43,8 @@ class SecurityConfig(
             .authorizeHttpRequests {
                 it.requestMatchers("/login/oauth2/code/**").permitAll()
                     .requestMatchers("/api/auth/signup", "/api/auth/login").permitAll()
+                    .requestMatchers("/api/auth/send-verification", "/api/auth/verify-email").permitAll()
+                    .requestMatchers("/api/auth/forgot-password", "/api/auth/reset-password").permitAll()
                     .requestMatchers("/api/auth/refresh", "/api/auth/logout").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/home/**").permitAll()
                     .requestMatchers(HttpMethod.GET, "/api/dashboard/**").permitAll()

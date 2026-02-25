@@ -1,8 +1,8 @@
-package me.saramquantgateway.feature.systememail.service
+package me.saramquantgateway.infra.systememail.service
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import me.saramquantgateway.domain.entity.user.User
-import me.saramquantgateway.feature.systememail.util.EmailTemplateRenderer
+import me.saramquantgateway.infra.systememail.util.EmailTemplateRenderer
 import me.saramquantgateway.infra.aws.lib.AwsSesClient
 import me.saramquantgateway.infra.log.entity.AuditLog
 import me.saramquantgateway.infra.log.repository.AuditLogRepository
