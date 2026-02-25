@@ -130,6 +130,12 @@ class DashboardQueryRepository(
         addRange(conditions, params, "sf.roe", "roeMin", "roeMax", filter.roeMin, filter.roeMax)
         addRange(conditions, params, "sf.debt_ratio", "drMin", "drMax", filter.debtRatioMin, filter.debtRatioMax)
 
+        addDimensionTierFilter(conditions, params, "price_heat", "ph", filter.priceHeatTiers)
+        addDimensionTierFilter(conditions, params, "volatility", "vol", filter.volatilityTiers)
+        addDimensionTierFilter(conditions, params, "trend", "tr", filter.trendTiers)
+        addDimensionTierFilter(conditions, params, "company_health", "ch", filter.companyHealthTiers)
+        addDimensionTierFilter(conditions, params, "valuation", "val", filter.valuationTiers)
+
         filter.query?.let { q ->
             conditions += "(s.name ILIKE :query OR s.symbol ILIKE :query)"
             params["query"] = "%$q%"
@@ -145,6 +151,20 @@ class DashboardQueryRepository(
     ) {
         min?.let { conditions += "$column >= :$minKey"; params[minKey] = it }
         max?.let { conditions += "$column <= :$maxKey"; params[maxKey] = it }
+    }
+
+    private fun addDimensionTierFilter(
+        conditions: MutableList<String>, params: MutableMap<String, Any>,
+        dimensionName: String, prefix: String, tiers: List<String>?,
+    ) {
+        if (tiers.isNullOrEmpty()) return
+        val placeholders = tiers.indices.joinToString(", ") { ":${prefix}T$it" }
+        conditions += """EXISTS (
+            SELECT 1 FROM jsonb_array_elements(rb.dimensions->'dims') d
+            WHERE d->>'name' = :${prefix}Dim AND d->>'tier' IN ($placeholders)
+        )"""
+        params["${prefix}Dim"] = dimensionName
+        tiers.forEachIndexed { i, t -> params["${prefix}T$i"] = t }
     }
 
     private fun mapRow(row: Array<Any?>): DashboardStockItem {

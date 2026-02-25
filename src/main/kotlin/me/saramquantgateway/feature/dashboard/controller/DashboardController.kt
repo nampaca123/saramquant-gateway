@@ -41,6 +41,11 @@ class DashboardController(private val service: DashboardService) {
         @RequestParam(required = false) debtRatioMin: BigDecimal?,
         @RequestParam(required = false) debtRatioMax: BigDecimal?,
         @RequestParam(required = false) query: String?,
+        @RequestParam(required = false) priceHeatTier: String?,
+        @RequestParam(required = false) volatilityTier: String?,
+        @RequestParam(required = false) trendTier: String?,
+        @RequestParam(required = false) companyHealthTier: String?,
+        @RequestParam(required = false) valuationTier: String?,
     ): ResponseEntity<DashboardPage> {
         val filter = ScreenerFilter(
             market = market?.name,
@@ -59,6 +64,11 @@ class DashboardController(private val service: DashboardService) {
             roeMin = roeMin, roeMax = roeMax,
             debtRatioMin = debtRatioMin, debtRatioMax = debtRatioMax,
             query = query,
+            priceHeatTiers = priceHeatTier?.split(",")?.map { it.trim().uppercase() },
+            volatilityTiers = volatilityTier?.split(",")?.map { it.trim().uppercase() },
+            trendTiers = trendTier?.split(",")?.map { it.trim().uppercase() },
+            companyHealthTiers = companyHealthTier?.split(",")?.map { it.trim().uppercase() },
+            valuationTiers = valuationTier?.split(",")?.map { it.trim().uppercase() },
         )
         return ResponseEntity.ok(service.list(filter))
     }
