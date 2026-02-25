@@ -35,7 +35,7 @@ class DashboardService(
 
     @Cacheable("screener", key = "#filter.hashCode()")
     fun list(filter: ScreenerFilter): DashboardPage {
-        if (filter.market == null || filter.hasAdvancedFilters()) return queryRepo.search(filter)
+        if (filter.market == null || filter.needsFullQuery()) return queryRepo.search(filter)
         if (filter.tiers != null && filter.sector != null) return queryRepo.search(filter)
 
         val market = Market.valueOf(filter.market)

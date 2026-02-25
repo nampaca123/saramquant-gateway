@@ -49,11 +49,16 @@ class DashboardQueryRepository(
             FROM stocks s
             JOIN risk_badges rb ON rb.stock_id = s.id
             LEFT JOIN LATERAL (
-                SELECT stock_id, beta, rsi_14, sharpe, atr_14, adx_14
+                SELECT stock_id,
+                       NULLIF(beta, 'NaN') AS beta, NULLIF(rsi_14, 'NaN') AS rsi_14,
+                       NULLIF(sharpe, 'NaN') AS sharpe, NULLIF(atr_14, 'NaN') AS atr_14,
+                       NULLIF(adx_14, 'NaN') AS adx_14
                 FROM stock_indicators WHERE stock_id = s.id ORDER BY date DESC LIMIT 1
             ) si ON true
             LEFT JOIN LATERAL (
-                SELECT stock_id, per, pbr, roe, debt_ratio
+                SELECT stock_id,
+                       NULLIF(per, 'NaN') AS per, NULLIF(pbr, 'NaN') AS pbr,
+                       NULLIF(roe, 'NaN') AS roe, NULLIF(debt_ratio, 'NaN') AS debt_ratio
                 FROM stock_fundamentals WHERE stock_id = s.id ORDER BY date DESC LIMIT 1
             ) sf ON true
             LEFT JOIN LATERAL (

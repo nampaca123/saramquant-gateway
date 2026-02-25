@@ -65,12 +65,17 @@ data class ScreenerFilter(
     val companyHealthTiers: List<String>? = null,
     val valuationTiers: List<String>? = null,
 ) {
-    fun hasAdvancedFilters(): Boolean = query != null || hasDimensionFilters() || listOfNotNull(
+    fun needsFullQuery(): Boolean = sort !in SIMPLE_SORTS
+            || query != null || hasDimensionFilters() || listOfNotNull(
         betaMin, betaMax, rsiMin, rsiMax, sharpeMin, sharpeMax,
         atrMin, atrMax, adxMin, adxMax,
         perMin, perMax, pbrMin, pbrMax, roeMin, roeMax,
         debtRatioMin, debtRatioMax,
     ).isNotEmpty()
+
+    companion object {
+        private val SIMPLE_SORTS = setOf("name_asc", "name_desc")
+    }
 
     fun hasDimensionFilters(): Boolean = listOfNotNull(
         priceHeatTiers, volatilityTiers, trendTiers, companyHealthTiers, valuationTiers,
