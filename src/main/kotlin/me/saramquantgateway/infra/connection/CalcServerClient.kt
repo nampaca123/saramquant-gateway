@@ -55,7 +55,7 @@ class CalcServerClient(
         try {
             objectMapper.readValue(e.responseBodyAsString, Map::class.java)
         } catch (_: Exception) {
-            mapOf("error" to (e.statusText ?: "Calc server error"))
+            mapOf("error" to e.statusText.ifEmpty { "Calc server error" })
         }
 
     private fun buildUri(path: String, params: Map<String, String>): String {

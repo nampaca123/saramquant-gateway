@@ -42,7 +42,7 @@ class PortfolioLlmService(
     private val promptBuilder: PromptBuilder,
     private val llmRouter: LlmRouter,
     private val props: LlmProperties,
-    @Qualifier("llmExecutor") private val llmExecutor: Executor,
+    @param:Qualifier("llmExecutor") private val llmExecutor: Executor,
 ) {
     private val inFlight = ConcurrentHashMap<String, CompletableFuture<String>>()
 
