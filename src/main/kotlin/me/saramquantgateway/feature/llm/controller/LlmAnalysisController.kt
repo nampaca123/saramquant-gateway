@@ -32,12 +32,17 @@ class LlmAnalysisController(
 
     @PostMapping("/api/llm/stock-analysis")
     fun triggerStockAnalysis(@RequestBody req: StockAnalysisRequest): ResponseEntity<LlmAnalysisResponse> {
+        val market = Market.valueOf(req.market)
+
+        stockLlmService.getCached(req.symbol, market, req.preset, req.lang)?.let {
+            return ResponseEntity.ok(it)
+        }
+
         val userId = currentUserId()
         if (!usageService.isWithinLimit(userId)) {
             return ResponseEntity.status(HttpStatus.TOO_MANY_REQUESTS).build()
         }
         usageService.checkAndIncrement(userId)
-        val market = Market.valueOf(req.market)
         return ResponseEntity.ok(stockLlmService.analyze(req.symbol, market, req.preset, req.lang))
     }
 
