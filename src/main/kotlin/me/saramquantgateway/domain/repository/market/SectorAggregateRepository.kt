@@ -8,4 +8,8 @@ import org.springframework.data.jpa.repository.JpaRepository
 interface SectorAggregateRepository : JpaRepository<SectorAggregate, SectorAggregateId> {
 
     fun findTop1ByMarketAndSectorOrderByDateDesc(market: Market, sector: String): SectorAggregate?
+
+    fun findTop1ByMarketOrderByDateDesc(market: Market): SectorAggregate?
+
+    fun findByMarketAndDate(market: Market, date: java.time.LocalDate): List<SectorAggregate>
 }

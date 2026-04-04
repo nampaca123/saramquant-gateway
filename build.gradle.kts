@@ -35,6 +35,8 @@ dependencies {
     implementation("software.amazon.awssdk:sesv2")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
+
+    implementation("com.anthropic:anthropic-java:2.19.0")
 }
 
 tasks.withType<Test> {

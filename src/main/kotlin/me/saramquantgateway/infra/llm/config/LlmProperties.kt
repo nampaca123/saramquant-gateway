@@ -9,6 +9,7 @@ data class LlmProperties(
     val openai: ProviderConfig,
     val stockModel: String = "claude-sonnet-4-6",
     val portfolioModel: String = "claude-opus-4-6",
+    val recommendationModel: String = "claude-opus-4-6",
     val fallbackModel: String = "gpt-5.2",
     val dailyLimit: Int = 20,
     val maxRetries: Int = 3,
