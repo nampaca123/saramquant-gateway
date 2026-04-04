@@ -98,7 +98,7 @@ User Message (포트폴리오 테이블 + 사용자 메시지)
 | `get_stock_detail` | 후보 종목 심층 분석 | stock_id | 기술지표, 펀더멘털, 팩터 노출 6개 z-score, 리스크 뱃지, 섹터 비교, 무위험이자율 |
 | `get_sector_overview` | 시장 전체 섹터 구조 파악 | market | 섹터별 종목 수, median PER/PBR/ROE/부채비율 |
 | `evaluate_portfolio` | 후보 포트폴리오 리스크 정량 검증 | stocks [{stock_id, weight}] | 팩터 노출, 추정 변동성(σ²_p ≈ B_p^T × Σ_f × B_p), 집중도(HHI), 가중평균 지표, 팩터 편향 경고 |
-| `web_search` | 최신 시장 동향/뉴스 검색 | query | Brave Search 결과 (title, description, url) |
+| `web_search` (빌트인) | 최신 시장 동향/뉴스 검색 | Claude가 자율적으로 호출 | Anthropic 서버에서 자동 처리 (별도 API 키 불필요) |
 
 ### 3-3. evaluate_portfolio 상세 — 핵심 도구
 
@@ -289,8 +289,8 @@ feature/recommendation/
 │   └── RecommendationDtos.kt            # Request, Response, ProgressEvent
 └── service/
     ├── RecommendationAgentService.kt    # Agent Loop (Claude API + 도구 반복)
-    ├── RecommendationToolExecutor.kt    # 5개 도구 실행 (DB 조회 + 팩터 계산)
-    ├── RecommendationToolDefinitions.kt # 도구 JSON Schema 정의
+    ├── RecommendationToolExecutor.kt    # 4개 커스텀 도구 실행 (DB 조회 + 팩터 계산)
+    ├── RecommendationToolDefinitions.kt # 도구 스키마 정의 (커스텀 4개 + 빌트인 web search)
     └── RecommendationPrompts.kt         # 시스템 프롬프트 + 포트폴리오 컨텍스트 포맷
 
 domain/entity/recommendation/
@@ -298,9 +298,6 @@ domain/entity/recommendation/
 
 domain/repository/recommendation/
 └── PortfolioRecommendationRepository.kt
-
-infra/websearch/
-└── BraveSearchClient.kt                # Brave Search API 클라이언트
 ```
 
 ---
@@ -310,6 +307,7 @@ infra/websearch/
 ```properties
 # application.properties
 app.llm.recommendation-model=claude-opus-4-6   # 추천 전용 모델
-app.brave-search.api-key=${BRAVE_SEARCH_API_KEY:}  # 웹 검색 (미설정 시 비활성)
 app.llm.daily-limit=20                         # 일일 크레딧 한도
 ```
+
+웹 검색은 Anthropic 빌트인 web search tool을 사용하므로 별도 API 키 불필요 (Anthropic API 키로 동작).

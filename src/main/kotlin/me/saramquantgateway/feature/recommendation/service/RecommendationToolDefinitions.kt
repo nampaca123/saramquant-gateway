@@ -2,14 +2,20 @@ package me.saramquantgateway.feature.recommendation.service
 
 import com.anthropic.models.messages.Tool
 import com.anthropic.models.messages.ToolUnion
+import com.anthropic.models.messages.WebSearchTool20250305
 import com.anthropic.core.JsonValue
 import org.springframework.stereotype.Component
 
 @Component
 class RecommendationToolDefinitions {
 
-    fun all(): List<ToolUnion> = listOf(screenStocks(), getStockDetail(), getSectorOverview(), evaluatePortfolio(), webSearch())
-        .map { ToolUnion.ofTool(it) }
+    fun all(): List<ToolUnion> = listOf(
+        ToolUnion.ofTool(screenStocks()),
+        ToolUnion.ofTool(getStockDetail()),
+        ToolUnion.ofTool(getSectorOverview()),
+        ToolUnion.ofTool(evaluatePortfolio()),
+        ToolUnion.ofWebSearchTool20250305(WebSearchTool20250305.builder().maxUses(3).build()),
+    )
 
     private fun screenStocks() = Tool.builder()
         .name("screen_stocks")
@@ -79,15 +85,4 @@ class RecommendationToolDefinitions {
             .build())
         .build()
 
-    private fun webSearch() = Tool.builder()
-        .name("web_search")
-        .description("Search the web for latest market news, trends, economic events, or company-specific developments. Use this to incorporate recent information that may not be in the database (e.g., interest rate decisions, geopolitical events, earnings season, sector rotations).")
-        .inputSchema(Tool.InputSchema.builder()
-            .type(JsonValue.from("object"))
-            .properties(JsonValue.from(mapOf(
-                "query" to mapOf("type" to "string", "description" to "Search query in English for best results"),
-            )))
-            .required(JsonValue.from(listOf("query")))
-            .build())
-        .build()
 }

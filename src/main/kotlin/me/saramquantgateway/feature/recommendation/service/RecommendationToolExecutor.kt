@@ -14,7 +14,6 @@ import me.saramquantgateway.domain.repository.riskbadge.RiskBadgeRepository
 import me.saramquantgateway.domain.repository.stock.StockRepository
 import me.saramquantgateway.feature.dashboard.dto.ScreenerFilter
 import me.saramquantgateway.feature.dashboard.repository.DashboardQueryRepository
-import me.saramquantgateway.infra.websearch.BraveSearchClient
 import org.springframework.stereotype.Component
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -30,7 +29,6 @@ class RecommendationToolExecutor(
     private val factorCovRepo: FactorCovarianceRepository,
     private val sectorAggRepo: SectorAggregateRepository,
     private val riskFreeRateRepo: RiskFreeRateRepository,
-    private val braveSearch: BraveSearchClient,
     private val objectMapper: ObjectMapper,
 ) {
     companion object {
@@ -43,7 +41,6 @@ class RecommendationToolExecutor(
             "get_stock_detail" -> getStockDetail(input)
             "get_sector_overview" -> getSectorOverview(input)
             "evaluate_portfolio" -> evaluatePortfolio(input)
-            "web_search" -> braveSearch.search(input["query"] as String)
             else -> """{"error": "Unknown tool: $toolName"}"""
         }
     } catch (e: Exception) {

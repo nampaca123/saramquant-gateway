@@ -49,7 +49,13 @@ class RecommendationAgentService(
                     .build())
 
                 val toolUseBlocks = response.content().mapNotNull { block -> block.toolUse().orElse(null) }
+                val hasWebSearch = response.content().any { block -> block.webSearchToolResult().isPresent }
                 val textParts = response.content().mapNotNull { block -> block.text().orElse(null) }
+
+                if (hasWebSearch) {
+                    emitToolProgress(emitter, "web_search", null, req.lang)
+                    toolCallCount++
+                }
 
                 if (toolUseBlocks.isEmpty()) {
                     val text = textParts.joinToString("") { tb -> tb.text() }
