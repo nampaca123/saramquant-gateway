@@ -1,9 +1,11 @@
 package me.saramquantgateway.feature.recommendation.dto
 
+import me.saramquantgateway.domain.enum.recommendation.RecommendationDirection
+
 data class RecommendationRequest(
     val marketGroup: String,
     val lang: String = "ko",
-    val message: String? = null,
+    val direction: RecommendationDirection = RecommendationDirection.IMPROVE,
 )
 
 data class RecommendedStock(

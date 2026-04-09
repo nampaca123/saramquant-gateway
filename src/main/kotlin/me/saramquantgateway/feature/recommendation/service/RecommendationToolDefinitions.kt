@@ -19,7 +19,10 @@ class RecommendationToolDefinitions {
 
     private fun screenStocks() = Tool.builder()
         .name("screen_stocks")
-        .description("Screen stocks from the database using filters. Returns a list of stocks with key metrics (symbol, name, sector, risk tier, beta, sharpe, PER, PBR, ROE, debt ratio, latest price, change%). Use this to explore the investment universe and find candidates matching the user's risk profile.")
+        .description("""Screen stocks from the database using filters. Returns a list of stocks with key metrics (symbol, name, sector, risk tier, beta, sharpe, PER, PBR, ROE, debt ratio). Use this to explore the investment universe and find candidates matching the user's risk profile.
+
+Example: {"market": "KR_KOSPI", "tiers": ["LOW", "MODERATE"], "roe_min": 5, "debt_ratio_max": 200, "sort": "sharpe_desc", "size": 20}
+Example: {"market": "US_NYSE", "sector": "Technology", "sharpe_min": 0.5, "per_max": 30}""")
         .inputSchema(Tool.InputSchema.builder()
             .type(JsonValue.from("object"))
             .properties(JsonValue.from(mapOf(
@@ -40,7 +43,9 @@ class RecommendationToolDefinitions {
 
     private fun getStockDetail() = Tool.builder()
         .name("get_stock_detail")
-        .description("Get comprehensive data for a specific stock: technical indicators (RSI, MACD, BB, ATR, Beta, Sharpe), fundamentals (PER, PBR, ROE, debt ratio), factor exposures (size, value, momentum, volatility, quality, leverage z-scores), risk badge, sector comparison, and risk-free rate. Factor exposures are critical for assessing diversification — stocks with similar factor profiles are correlated.")
+        .description("""Get comprehensive data for a specific stock: technical indicators (RSI, MACD, BB, ATR, Beta, Sharpe), fundamentals (PER, PBR, ROE, debt ratio), factor exposures (size, value, momentum, volatility, quality, leverage z-scores), risk badge, sector comparison, and risk-free rate. Factor exposures are critical for assessing diversification — stocks with similar factor profiles are correlated.
+
+Example: {"stock_id": 123}""")
         .inputSchema(Tool.InputSchema.builder()
             .type(JsonValue.from("object"))
             .properties(JsonValue.from(mapOf(
@@ -52,7 +57,9 @@ class RecommendationToolDefinitions {
 
     private fun getSectorOverview() = Tool.builder()
         .name("get_sector_overview")
-        .description("Get sector-level aggregate statistics for a market: number of stocks, median PER, PBR, ROE, operating margin, and debt ratio per sector. Use this to understand which sectors are cheap/expensive and to plan sector allocation.")
+        .description("""Get sector-level aggregate statistics for a market: number of stocks, median PER, PBR, ROE, operating margin, and debt ratio per sector. Use this to understand which sectors are cheap/expensive and to plan sector allocation.
+
+Example: {"market": "KR_KOSPI"}""")
         .inputSchema(Tool.InputSchema.builder()
             .type(JsonValue.from("object"))
             .properties(JsonValue.from(mapOf(
@@ -64,7 +71,9 @@ class RecommendationToolDefinitions {
 
     private fun evaluatePortfolio() = Tool.builder()
         .name("evaluate_portfolio")
-        .description("Evaluate a candidate portfolio's risk using the factor model. Input a list of stock_ids with weights (0-1, summing to 1.0). Returns: portfolio factor exposure (weighted z-scores across 6 factors), estimated annual volatility from factor covariance matrix, concentration metrics (HHI, effective N, sector distribution), weighted average metrics (beta, sharpe, PER, ROE, debt ratio), and warnings for factor tilts exceeding ±1.0σ. This is the KEY tool for verifying diversification — always use it before finalizing a recommendation.")
+        .description("""Evaluate a candidate portfolio's risk using the factor model. Input a list of stock_ids with weights (0-1, summing to 1.0). Returns: portfolio factor exposure (weighted z-scores across 6 factors), estimated annual volatility from factor covariance matrix, concentration metrics (HHI, effective N, sector distribution), weighted average metrics (beta, sharpe, PER, ROE, debt ratio), and warnings for factor tilts exceeding ±1.0σ. This is the KEY tool for verifying diversification — always use it before finalizing a recommendation.
+
+Example: {"stocks": [{"stock_id": 123, "weight": 0.3}, {"stock_id": 456, "weight": 0.3}, {"stock_id": 789, "weight": 0.4}]}""")
         .inputSchema(Tool.InputSchema.builder()
             .type(JsonValue.from("object"))
             .properties(JsonValue.from(mapOf(
@@ -84,5 +93,4 @@ class RecommendationToolDefinitions {
             .required(JsonValue.from(listOf("stocks")))
             .build())
         .build()
-
 }

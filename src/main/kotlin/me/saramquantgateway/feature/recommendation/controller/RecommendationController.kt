@@ -1,7 +1,11 @@
 package me.saramquantgateway.feature.recommendation.controller
 
+import com.fasterxml.jackson.databind.ObjectMapper
+import me.saramquantgateway.domain.enum.recommendation.RecommendationDirection
 import me.saramquantgateway.domain.repository.recommendation.PortfolioRecommendationRepository
+import me.saramquantgateway.domain.repository.user.UserProfileRepository
 import me.saramquantgateway.feature.llm.service.LlmUsageService
+import me.saramquantgateway.feature.portfolio.dto.PortfolioDetail
 import me.saramquantgateway.feature.portfolio.service.PortfolioService
 import me.saramquantgateway.feature.recommendation.dto.RecommendationHistoryItem
 import me.saramquantgateway.feature.recommendation.dto.RecommendationRequest
@@ -13,6 +17,7 @@ import org.springframework.http.ResponseEntity
 import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.*
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
+import java.time.Instant
 import java.util.UUID
 import java.util.concurrent.Executor
 
@@ -21,7 +26,9 @@ class RecommendationController(
     private val agentService: RecommendationAgentService,
     private val usageService: LlmUsageService,
     private val portfolioService: PortfolioService,
+    private val profileRepo: UserProfileRepository,
     private val recRepo: PortfolioRecommendationRepository,
+    private val objectMapper: ObjectMapper,
     @Qualifier("llmExecutor") private val llmExecutor: Executor,
 ) {
     companion object {
@@ -34,39 +41,37 @@ class RecommendationController(
     fun recommend(
         @RequestParam marketGroup: String,
         @RequestParam(defaultValue = "ko") lang: String,
-        @RequestParam(required = false) message: String?,
+        @RequestParam(defaultValue = "IMPROVE") direction: String,
     ): SseEmitter {
         val userId = currentUserId()
         val emitter = SseEmitter(150_000L)
 
         if (marketGroup !in VALID_MARKET_GROUPS) {
-            emitter.send(SseEmitter.event().name("error")
-                .data("""{"message":"Invalid marketGroup. Must be KR or US."}"""))
-            emitter.complete()
+            emitErrorAndComplete(emitter, "INVALID_PARAM", "Invalid marketGroup. Must be KR or US.")
             return emitter
         }
 
-        if (!usageService.isWithinLimit(userId)) {
-            emitter.send(SseEmitter.event().name("error")
-                .data("""{"message":"Daily usage limit exceeded"}"""))
-            emitter.complete()
-            return emitter
-        }
-        repeat(RECOMMENDATION_COST) { usageService.checkAndIncrement(userId) }
-
-        val portfolios = portfolioService.getPortfolios(userId)
-        val portfolioSummary = portfolios.firstOrNull { it.marketGroup == marketGroup }
-        if (portfolioSummary == null) {
-            emitter.send(SseEmitter.event().name("error")
-                .data("""{"message":"Portfolio not found for $marketGroup"}"""))
-            emitter.complete()
+        val parsedDirection = try {
+            RecommendationDirection.valueOf(direction)
+        } catch (_: IllegalArgumentException) {
+            emitErrorAndComplete(emitter, "INVALID_PARAM", "Invalid direction. Must be IMPROVE, CONSERVATIVE, or GROWTH.")
             return emitter
         }
 
-        val portfolio = portfolioService.getPortfolioDetail(portfolioSummary.id, userId)
+        if (!usageService.checkAndIncrementBy(userId, RECOMMENDATION_COST)) {
+            emitErrorAndComplete(emitter, "CREDIT_EXCEEDED", "Daily usage limit exceeded")
+            return emitter
+        }
+
+        val portfolio = loadPortfolioOrEmpty(userId, marketGroup)
+        val profile = profileRepo.findByUserId(userId)
         val effectiveLang = if (lang in VALID_LANGS) lang else "ko"
-        val req = RecommendationRequest(marketGroup, effectiveLang, message)
-        llmExecutor.execute { agentService.recommend(req, portfolio, userId, emitter) }
+        val req = RecommendationRequest(marketGroup, effectiveLang, parsedDirection)
+
+        llmExecutor.execute {
+            val success = agentService.recommend(req, portfolio, userId, profile, emitter)
+            if (!success) usageService.decrementBy(userId, RECOMMENDATION_COST)
+        }
         return emitter
     }
 
@@ -91,6 +96,22 @@ class RecommendationController(
             )
         }
         return ResponseEntity.ok(items)
+    }
+
+    private fun loadPortfolioOrEmpty(userId: UUID, marketGroup: String): PortfolioDetail {
+        val portfolios = portfolioService.getPortfolios(userId)
+        val summary = portfolios.firstOrNull { it.marketGroup == marketGroup }
+            ?: return PortfolioDetail(
+                id = 0, marketGroup = marketGroup, holdings = emptyList(),
+                createdAt = Instant.now(),
+            )
+        return portfolioService.getPortfolioDetail(summary.id, userId)
+    }
+
+    private fun emitErrorAndComplete(emitter: SseEmitter, code: String, message: String) {
+        emitter.send(SseEmitter.event().name("error")
+            .data(objectMapper.writeValueAsString(mapOf("code" to code, "message" to message))))
+        emitter.complete()
     }
 
     private fun currentUserId(): UUID =

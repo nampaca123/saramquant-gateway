@@ -4,6 +4,7 @@ import com.anthropic.client.okhttp.AnthropicOkHttpClient
 import com.anthropic.models.messages.*
 import com.fasterxml.jackson.databind.ObjectMapper
 import me.saramquantgateway.domain.entity.recommendation.PortfolioRecommendation
+import me.saramquantgateway.domain.entity.user.UserProfile
 import me.saramquantgateway.domain.repository.recommendation.PortfolioRecommendationRepository
 import me.saramquantgateway.feature.portfolio.dto.PortfolioDetail
 import me.saramquantgateway.feature.recommendation.dto.ProgressEvent
@@ -15,6 +16,7 @@ import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.web.servlet.mvc.method.annotation.SseEmitter
 import java.util.UUID
+import java.util.concurrent.atomic.AtomicBoolean
 
 @Service
 class RecommendationAgentService(
@@ -26,31 +28,59 @@ class RecommendationAgentService(
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
-    fun recommend(req: RecommendationRequest, portfolio: PortfolioDetail, userId: UUID, emitter: SseEmitter) {
+    private val client by lazy {
+        AnthropicOkHttpClient.builder()
+            .apiKey(props.claude.apiKey)
+            .timeout(props.claude.timeout)
+            .build()
+    }
+
+    companion object {
+        private const val MAX_ITERATIONS = 10
+        private const val MAX_API_RETRIES = 2
+        private const val MAX_TOOL_RESULT_CHARS = 6000
+    }
+
+    fun recommend(req: RecommendationRequest, portfolio: PortfolioDetail, userId: UUID, profile: UserProfile?, emitter: SseEmitter): Boolean {
+        val cancelled = AtomicBoolean(false)
+        emitter.onCompletion { cancelled.set(true) }
+        emitter.onTimeout { cancelled.set(true) }
+        emitter.onError { cancelled.set(true) }
+
         try {
-            val client = AnthropicOkHttpClient.builder().apiKey(props.claude.apiKey).build()
             val messages = mutableListOf<MessageParam>(
                 MessageParam.builder()
                     .role(MessageParam.Role.USER)
-                    .content(RecommendationPrompts.userMessage(portfolio, req.lang, req.message))
+                    .content(RecommendationPrompts.userMessage(portfolio, req.lang, req.direction, profile))
                     .build()
             )
 
             var toolCallCount = 0
-            val maxIterations = 10
 
-            for (iteration in 1..maxIterations) {
-                val response = client.messages().create(MessageCreateParams.builder()
-                    .model(props.recommendationModel)
-                    .maxTokens(4096)
-                    .system(RecommendationPrompts.system(req.lang))
-                    .messages(messages)
-                    .tools(toolDefs.all())
-                    .build())
+            for (iteration in 1..MAX_ITERATIONS) {
+                if (cancelled.get()) {
+                    log.info("Client disconnected at iteration {}", iteration)
+                    return false
+                }
 
-                val toolUseBlocks = response.content().mapNotNull { block -> block.toolUse().orElse(null) }
-                val hasWebSearch = response.content().any { block -> block.webSearchToolResult().isPresent }
-                val textParts = response.content().mapNotNull { block -> block.text().orElse(null) }
+                val response = callWithRetry(
+                    MessageCreateParams.builder()
+                        .model(props.recommendationModel)
+                        .maxTokens(4096)
+                        .system(RecommendationPrompts.system(req.lang))
+                        .messages(messages)
+                        .tools(toolDefs.all())
+                        .build()
+                )
+
+                if (cancelled.get()) {
+                    log.info("Client disconnected after API call at iteration {}", iteration)
+                    return false
+                }
+
+                val toolUseBlocks = response.content().mapNotNull { it.toolUse().orElse(null) }
+                val hasWebSearch = response.content().any { it.webSearchToolResult().isPresent }
+                val textParts = response.content().mapNotNull { it.text().orElse(null) }
 
                 if (hasWebSearch) {
                     emitToolProgress(emitter, "web_search", null, req.lang)
@@ -58,22 +88,23 @@ class RecommendationAgentService(
                 }
 
                 if (toolUseBlocks.isEmpty()) {
-                    val text = textParts.joinToString("") { tb -> tb.text() }
+                    val text = textParts.joinToString("") { it.text() }
                     emitStepProgress(emitter, "BUILDING_RECOMMENDATION", req.lang)
                     val result = parseAndSave(text, req, userId, toolCallCount)
                     emitter.send(SseEmitter.event().name("result")
                         .data(objectMapper.writeValueAsString(result)))
                     emitter.complete()
-                    return
+                    return true
                 }
 
                 messages.add(MessageParam.builder()
                     .role(MessageParam.Role.ASSISTANT)
-                    .contentOfBlockParams(response.content().map { block -> block.toParam() })
+                    .contentOfBlockParams(response.content().map { it.toParam() })
                     .build())
 
                 val toolResults = mutableListOf<ToolResultBlockParam>()
                 for (toolUse in toolUseBlocks) {
+                    if (cancelled.get()) break
                     @Suppress("UNCHECKED_CAST")
                     val input = toolUse._input().convert(Map::class.java) as Map<String, Any?>
                     val stockName = toolExecutor.resolveStockName(toolUse.name(), input)
@@ -82,29 +113,42 @@ class RecommendationAgentService(
                     toolCallCount++
                     toolResults.add(ToolResultBlockParam.builder()
                         .toolUseId(toolUse.id())
-                        .content(result)
+                        .content(truncateResult(result))
                         .build())
                 }
 
                 messages.add(MessageParam.builder()
                     .role(MessageParam.Role.USER)
-                    .contentOfBlockParams(toolResults.map { tr -> ContentBlockParam.ofToolResult(tr) })
+                    .contentOfBlockParams(toolResults.map { ContentBlockParam.ofToolResult(it) })
                     .build())
             }
 
-            emitter.send(SseEmitter.event().name("error")
-                .data("""{"message":"Agent exceeded max iterations"}"""))
-            emitter.complete()
+            emitError(emitter, "Agent exceeded max iterations")
+            return false
         } catch (e: Exception) {
             log.error("Recommendation agent failed", e)
+            emitError(emitter, e.message ?: "Internal error")
+            return false
+        }
+    }
+
+    private fun callWithRetry(params: MessageCreateParams): Message {
+        for (attempt in 1..MAX_API_RETRIES) {
             try {
-                emitter.send(SseEmitter.event().name("error")
-                    .data("""{"message":"${e.message?.replace("\"", "'")}"}"""))
-                emitter.complete()
-            } catch (_: Exception) {
-                emitter.completeWithError(e)
+                return client.messages().create(params)
+            } catch (e: Exception) {
+                if (attempt == MAX_API_RETRIES) throw e
+                log.warn("Claude API attempt {}/{} failed: {}", attempt, MAX_API_RETRIES, e.message)
+                Thread.sleep((1L shl attempt) * 1000)
             }
         }
+        throw RuntimeException("All Claude API attempts failed")
+    }
+
+    private fun truncateResult(result: String): String {
+        if (result.length <= MAX_TOOL_RESULT_CHARS) return result
+        return result.take(MAX_TOOL_RESULT_CHARS) +
+            "...(truncated, ${result.length - MAX_TOOL_RESULT_CHARS} chars omitted)"
     }
 
     @Suppress("UNCHECKED_CAST")
@@ -152,15 +196,20 @@ class RecommendationAgentService(
     }
 
     private fun extractJson(text: String): String {
-        val fenced = Regex("```(?:json)?\\s*\\n?(\\{.*?})\\s*```", RegexOption.DOT_MATCHES_ALL)
+        val fenced = Regex("```(?:json)?\\s*\\n?(\\{[\\s\\S]*?})\\s*```")
             .find(text)?.groupValues?.get(1)
         if (fenced != null) return fenced
 
-        val braceStart = text.indexOf('{')
-        val braceEnd = text.lastIndexOf('}')
-        if (braceStart >= 0 && braceEnd > braceStart) return text.substring(braceStart, braceEnd + 1)
-
-        return text.trim()
+        val start = text.indexOf('{')
+        if (start < 0) return text.trim()
+        var depth = 0
+        for (i in start until text.length) {
+            when (text[i]) {
+                '{' -> depth++
+                '}' -> { depth--; if (depth == 0) return text.substring(start, i + 1) }
+            }
+        }
+        return text.substring(start)
     }
 
     private fun emitToolProgress(emitter: SseEmitter, toolName: String, stockName: String?, lang: String) {
@@ -187,7 +236,17 @@ class RecommendationAgentService(
             emitter.send(SseEmitter.event().name("progress")
                 .data(objectMapper.writeValueAsString(ProgressEvent(step, message))))
         } catch (e: Exception) {
-            log.warn("Failed to send SSE progress event: {}", e.message)
+            log.warn("Failed to send SSE progress: {}", e.message)
+        }
+    }
+
+    private fun emitError(emitter: SseEmitter, message: String) {
+        try {
+            emitter.send(SseEmitter.event().name("error")
+                .data(objectMapper.writeValueAsString(mapOf("message" to message))))
+            emitter.complete()
+        } catch (_: Exception) {
+            try { emitter.completeWithError(RuntimeException(message)) } catch (_: Exception) {}
         }
     }
 }

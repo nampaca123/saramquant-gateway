@@ -13,14 +13,14 @@ import me.saramquantgateway.domain.repository.market.SectorAggregateRepository
 import me.saramquantgateway.domain.repository.riskbadge.RiskBadgeRepository
 import me.saramquantgateway.domain.repository.stock.StockRepository
 import me.saramquantgateway.feature.dashboard.dto.ScreenerFilter
-import me.saramquantgateway.feature.dashboard.repository.DashboardQueryRepository
+import me.saramquantgateway.feature.dashboard.service.DashboardService
 import org.springframework.stereotype.Component
 import java.math.BigDecimal
 import java.math.RoundingMode
 
 @Component
 class RecommendationToolExecutor(
-    private val dashboardRepo: DashboardQueryRepository,
+    private val dashboardService: DashboardService,
     private val stockRepo: StockRepository,
     private val indicatorRepo: StockIndicatorRepository,
     private val fundamentalRepo: StockFundamentalRepository,
@@ -41,10 +41,10 @@ class RecommendationToolExecutor(
             "get_stock_detail" -> getStockDetail(input)
             "get_sector_overview" -> getSectorOverview(input)
             "evaluate_portfolio" -> evaluatePortfolio(input)
-            else -> """{"error": "Unknown tool: $toolName"}"""
+            else -> objectMapper.writeValueAsString(mapOf("error" to "Unknown tool: $toolName"))
         }
     } catch (e: Exception) {
-        """{"error": "${e.message?.replace("\"", "'")}"}"""
+        objectMapper.writeValueAsString(mapOf("error" to (e.message ?: "Unknown error")))
     }
 
     fun resolveStockName(toolName: String, input: Map<String, Any?>): String? {
@@ -66,14 +66,13 @@ class RecommendationToolExecutor(
             debtRatioMax = toBd(input["debt_ratio_max"]),
             perMax = toBd(input["per_max"]),
         )
-        val page = dashboardRepo.search(filter)
+        val page = dashboardService.list(filter)
         val items = page.content.map { s ->
             mapOf(
                 "stockId" to s.stockId, "symbol" to s.symbol, "name" to s.name,
                 "market" to s.market, "sector" to s.sector, "summaryTier" to s.summaryTier,
                 "beta" to s.beta, "sharpe" to s.sharpe, "per" to s.per, "pbr" to s.pbr,
                 "roe" to s.roe, "debtRatio" to s.debtRatio,
-                "latestClose" to s.latestClose, "changePct" to s.priceChangePercent,
             )
         }
         return objectMapper.writeValueAsString(mapOf("stocks" to items, "total" to page.totalElements))
@@ -144,7 +143,7 @@ class RecommendationToolExecutor(
     private fun getSectorOverview(input: Map<String, Any?>): String {
         val market = Market.valueOf(input["market"] as String)
         val latest = sectorAggRepo.findTop1ByMarketOrderByDateDesc(market)
-        val date = latest?.date ?: return """{"sectors": []}"""
+        val date = latest?.date ?: return objectMapper.writeValueAsString(mapOf("sectors" to emptyList<Any>()))
 
         val sectors = sectorAggRepo.findByMarketAndDate(market, date).map { s ->
             mapOf(
@@ -163,9 +162,9 @@ class RecommendationToolExecutor(
         val weights = stocks.map { (it["weight"] as Number).toDouble() }
 
         val stockEntities = stockRepo.findAllById(stockIds).associateBy { it.id }
-        val factors = stockIds.mapNotNull { factorExposureRepo.findTop1ByStockIdOrderByDateDesc(it) }.associateBy { it.stockId }
-        val indicators = stockIds.mapNotNull { indicatorRepo.findTop1ByStockIdOrderByDateDesc(it) }.associateBy { it.stockId }
-        val fundamentals = stockIds.mapNotNull { fundamentalRepo.findTop1ByStockIdOrderByDateDesc(it) }.associateBy { it.stockId }
+        val factors = factorExposureRepo.findLatestByStockIds(stockIds).associateBy { it.stockId }
+        val indicators = indicatorRepo.findLatestByStockIds(stockIds).associateBy { it.stockId }
+        val fundamentals = fundamentalRepo.findLatestByStockIds(stockIds).associateBy { it.stockId }
 
         val portFactors = DoubleArray(6)
         stockIds.forEachIndexed { i, id ->

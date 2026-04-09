@@ -30,4 +30,17 @@ class LlmUsageService(
         val log = repo.findByUserIdAndUsageDate(userId, LocalDate.now())
         return (log?.count ?: 0) < props.dailyLimit
     }
+
+    @Transactional
+    fun checkAndIncrementBy(userId: UUID, amount: Int): Boolean {
+        val log = repo.findByUserIdAndUsageDate(userId, LocalDate.now())
+        if ((log?.count ?: 0) + amount > props.dailyLimit) return false
+        repo.incrementUsageBy(userId, LocalDate.now(), amount)
+        return true
+    }
+
+    @Transactional
+    fun decrementBy(userId: UUID, amount: Int) {
+        repo.decrementUsageBy(userId, LocalDate.now(), amount)
+    }
 }

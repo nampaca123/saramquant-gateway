@@ -18,4 +18,18 @@ interface LlmUsageLogRepository : JpaRepository<LlmUsageLog, Long> {
         value = "INSERT INTO llm_usage_logs (user_id, usage_date, count) VALUES (:userId, :usageDate, 1) ON CONFLICT (user_id, usage_date) DO UPDATE SET count = llm_usage_logs.count + 1"
     )
     fun incrementUsage(@Param("userId") userId: UUID, @Param("usageDate") usageDate: LocalDate)
+
+    @Modifying
+    @Query(
+        nativeQuery = true,
+        value = "INSERT INTO llm_usage_logs (user_id, usage_date, count) VALUES (:userId, :usageDate, :amount) ON CONFLICT (user_id, usage_date) DO UPDATE SET count = llm_usage_logs.count + :amount"
+    )
+    fun incrementUsageBy(@Param("userId") userId: UUID, @Param("usageDate") usageDate: LocalDate, @Param("amount") amount: Int)
+
+    @Modifying
+    @Query(
+        nativeQuery = true,
+        value = "UPDATE llm_usage_logs SET count = GREATEST(count - :amount, 0) WHERE user_id = :userId AND usage_date = :usageDate"
+    )
+    fun decrementUsageBy(@Param("userId") userId: UUID, @Param("usageDate") usageDate: LocalDate, @Param("amount") amount: Int)
 }

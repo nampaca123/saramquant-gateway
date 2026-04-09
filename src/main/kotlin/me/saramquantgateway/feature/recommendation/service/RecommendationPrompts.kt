@@ -1,40 +1,66 @@
 package me.saramquantgateway.feature.recommendation.service
 
+import me.saramquantgateway.domain.entity.user.UserProfile
+import me.saramquantgateway.domain.enum.recommendation.RecommendationDirection
+import me.saramquantgateway.domain.enum.recommendation.RecommendationDirection.*
+import me.saramquantgateway.domain.enum.user.InvestmentExperience.*
 import me.saramquantgateway.feature.portfolio.dto.HoldingDetail
 import me.saramquantgateway.feature.portfolio.dto.PortfolioDetail
+import java.time.LocalDate
 
 object RecommendationPrompts {
 
     fun system(lang: String): String = if (lang == "en") SYSTEM_EN else SYSTEM_KO
 
-    fun userMessage(portfolio: PortfolioDetail, lang: String, message: String?): String {
-        val portfolioContext = buildPortfolioContext(portfolio, lang)
-        val userNote = message?.let {
-            if (lang == "en") "\n\nUser's note: $it" else "\n\n사용자 요청: $it"
-        } ?: ""
+    fun userMessage(portfolio: PortfolioDetail, lang: String, direction: RecommendationDirection, profile: UserProfile?): String {
+        val portfolioCtx = buildPortfolioContext(portfolio, lang)
+        val profileCtx = profileContext(profile, lang)
+        val directionCtx = directionInstruction(direction, lang)
 
         return if (lang == "en") """
 Here is the user's current ${portfolio.marketGroup} portfolio:
 
-$portfolioContext
-
-Analyze this portfolio and provide improvement recommendations.$userNote
+$portfolioCtx
+$profileCtx
+$directionCtx
 
 Use your tools to research and verify, then respond with the final JSON.
         """.trimIndent() else """
 사용자의 현재 ${portfolio.marketGroup} 포트폴리오입니다:
 
-$portfolioContext
-
-이 포트폴리오를 분석하고 개선 방안을 추천해 주세요.$userNote
+$portfolioCtx
+$profileCtx
+$directionCtx
 
 도구를 활용하여 조사 및 검증한 뒤, 최종 JSON으로 답변해 주세요.
         """.trimIndent()
     }
 
+    private fun directionInstruction(direction: RecommendationDirection, lang: String): String = when (direction) {
+        IMPROVE -> if (lang == "en") "Direction: Improve the portfolio overall — balance risk and return."
+                   else "요청 방향: 포트폴리오를 전반적으로 개선해 주세요."
+        CONSERVATIVE -> if (lang == "en") "Direction: Reduce risk and volatility. Prioritize stability."
+                        else "요청 방향: 리스크를 줄이고 안정적으로 바꿔 주세요."
+        GROWTH -> if (lang == "en") "Direction: Maximize growth potential. Accept moderate risk."
+                  else "요청 방향: 성장 가능성을 우선해 주세요."
+    }
+
+    private fun profileContext(profile: UserProfile?, lang: String): String {
+        if (profile == null) return ""
+        val ageGroup = profile.birthYear?.let { "${(LocalDate.now().year - it) / 10 * 10}대" } ?: "미상"
+        val expLabel = when (profile.investmentExperience) {
+            BEGINNER -> if (lang == "en") "beginner" else "초보"
+            INTERMEDIATE -> if (lang == "en") "intermediate" else "중급"
+            ADVANCED -> if (lang == "en") "advanced" else "숙련"
+        }
+        return if (lang == "en") "User profile: ${ageGroup}s, $expLabel investor."
+               else "사용자 정보: $ageGroup, 투자경험 $expLabel."
+    }
+
     private fun buildPortfolioContext(portfolio: PortfolioDetail, lang: String): String {
         if (portfolio.holdings.isEmpty()) {
-            return if (lang == "en") "(Empty portfolio — no holdings yet)" else "(빈 포트폴리오 — 보유 종목 없음)"
+            return if (lang == "en") "(Empty portfolio — no holdings yet. Build a new portfolio from scratch.)"
+                   else "(빈 포트폴리오 — 보유 종목 없음. 새로운 포트폴리오를 처음부터 구성해 보세요.)"
         }
 
         val totalValue = portfolio.totalValue ?: return "(Unable to calculate portfolio value)"
@@ -69,7 +95,7 @@ $portfolioContext
     }
 
     private const val SYSTEM_KO = """당신은 SaramQuant의 포트폴리오 어드바이저입니다.
-대상: 금융 지식이 거의 없는 2030 사회초년생. 쉬운 일상 표현을 사용하세요.
+대상: 금융 지식이 거의 없는 사람을 대상으로 합니다. 전문 용어를 피하고 쉬운 일상 표현을 사용하세요.
 
 ## 역할
 사용자의 **현재 포트폴리오**를 분석하고 개선 방안을 추천합니다.
@@ -85,7 +111,7 @@ $portfolioContext
 
 ### 리스크 판단
 - 사용자의 기존 포트폴리오 구성에서 리스크 성향을 유추합니다.
-- 사용자가 별도 요청(예: "좀 더 안정적으로")을 하면 그 방향을 반영합니다.
+- 요청 방향(direction)에 따라 보수적/성장 위주 등을 반영합니다.
 
 ### 종목 평가
 - PER, PBR을 동종 섹터 중앙값과 비교.
@@ -137,7 +163,7 @@ $portfolioContext
 - 주어진 도구의 데이터만 근거로 사용. 추측 금지."""
 
     private const val SYSTEM_EN = """You are SaramQuant's portfolio advisor.
-Target audience: young adults in their 20s-30s with little financial knowledge. Use plain, everyday language.
+Target audience: People with little financial knowledge. Avoid technical terms and jargon. Use plain, everyday language.
 
 ## Role
 Analyze the user's **current portfolio** and recommend improvements.
@@ -153,7 +179,7 @@ Analyze the user's **current portfolio** and recommend improvements.
 
 ### Risk Assessment
 - Infer the user's risk tolerance from their existing portfolio composition.
-- If the user makes a specific request (e.g., "make it more conservative"), reflect that direction.
+- Reflect the requested direction (e.g., conservative or growth-focused).
 
 ### Stock Evaluation
 - Compare PER, PBR against sector medians.
