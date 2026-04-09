@@ -44,7 +44,7 @@ class RecommendationController(
         @RequestParam(defaultValue = "IMPROVE") direction: String,
     ): SseEmitter {
         val userId = currentUserId()
-        val emitter = SseEmitter(150_000L)
+        val emitter = SseEmitter(-1L)
 
         if (marketGroup !in VALID_MARKET_GROUPS) {
             emitErrorAndComplete(emitter, "INVALID_PARAM", "Invalid marketGroup. Must be KR or US.")

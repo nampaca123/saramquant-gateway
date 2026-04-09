@@ -396,25 +396,45 @@ app.llm.daily-limit=20                         # 일일 크레딧 한도
 - 프롬프트 인젝션 원천 차단: direction은 서버에서 enum 검증, 고정 텍스트 매핑
 - `UserProfile`(투자경험, 연령대)을 서버에서 자동 로드하여 프롬프트에 주입
 
-### 12-2. SSE 클라이언트
+### 12-2. SSE 클라이언트 (v3 — 스트리밍 강화)
 - `fetch + ReadableStream` 기반 (`EventSource`는 커스텀 헤더 미지원)
 - `SSEError` 타입으로 에러 분류: `AUTH_EXPIRED`, `CREDIT_EXCEEDED`, `RATE_LIMITED`, `SERVER_ERROR`, `NETWORK_ERROR`, `TIMEOUT`
-- 160초 클라이언트 타임아웃 (SseEmitter 150초 + 10초 여유)
+- 360초 클라이언트 타임아웃 (Opus 최악 케이스 7×40s + 도구 실행 여유)
+- SseEmitter 타임아웃: `-1L` (무제한) — 스트리밍으로 지속 이벤트 발송, 절대 타임아웃 불필요
 - 자동 재연결 없음 (Agent 비멱등) — retryable 에러 시 재시도 버튼 노출
 
-### 12-3. 크레딧 복원 정책
+### 12-3. SSE 이벤트 타입
+| 이벤트 | 설명 | 페이로드 |
+|--------|------|----------|
+| `progress` | 도구 실행 단계 안내 | `{step, message}` |
+| `thinking` | LLM 추론 텍스트 (200ms 버퍼링) | `{text}` |
+| `tool_call` | 도구 호출 시작 | `{tool, args}` |
+| `tool_result` | 도구 실행 완료 | `{tool, summary, durationMs}` |
+| `result` | 최종 추천 JSON | `RecommendationResponse` |
+| `error` | 에러 | `{code?, message}` |
+
+### 12-4. 스트리밍 아키텍처 (v3)
+- `client.messages().create()` → `createStreaming()` 전환 (Anthropic Java SDK 2.19.0)
+- `RawMessageStreamEvent` 이벤트 루프: `ContentBlockStart`, `ContentBlockDelta`(TextDelta / InputJsonDelta), `ContentBlockStop`, `MessageDelta`
+- **thinking 버퍼링**: 토큰별 전송 대신 200ms 간격으로 묶어 전송. 프론트엔드 렌더링 부하 억제.
+- **병렬 도구 실행**: Claude가 한 턴에 보낸 도구는 독립으로 신뢰, `CompletableFuture.supplyAsync()` 병렬 실행
+- **하트비트**: 도구 실행 구간에만 5초 간격 SSE comment — 스트리밍 중에는 토큰 델타가 연속이므로 불필요
+- **MAX_ITERATIONS**: 10 → 7, 프롬프트에 도구 일괄 호출 유도 + 7회 이내 제한 명시
+- **graceful degradation**: 7회 도달 시 부분 JSON 추출 시도 → 성공 시 반환, 실패 시 안내 메시지
+
+### 12-5. 크레딧 복원 정책
 - 기준: `result` SSE 이벤트 전송 성공 여부
 - `recommend()` → `false` 반환 시 자동 복원 (기존 구현)
 - 부분 성공(progress만 수신, result 미도달)도 복원 대상
-- 클라이언트 disconnect → `cancelled` 플래그 → 루프 종료 → 복원
-- `callWithRetry` 직후 cancelled 체크 추가 — 불필요한 도구 실행/API 호출 방지
+- 클라이언트 disconnect → `cancelled` 플래그 → 스트리밍 `takeWhile` 중단 → 루프 종료 → 복원
 
-### 12-4. 빈 포트폴리오 지원
+### 12-6. 빈 포트폴리오 지원
 - Controller에서 portfolio null 시 빈 `PortfolioDetail`을 Agent에 전달
 - Prompts에 빈 포트폴리오 안내 문구 포함 (기존 `buildPortfolioContext` 활용)
 - 프론트엔드: 프리셋 "전체 개선" → "포트폴리오 구성"으로 라벨 변경
 
-### 12-5. 컴포넌트 구조
-- `RecommendationSection`: 프리셋 3개 + SSE 실시간 progress + 결과 카드 + 에러/재시도
+### 12-7. 컴포넌트 구조
+- `RecommendationSection`: 프리셋 3개 + 실시간 스트리밍 텍스트 + 도구 호출/결과 표시 + 결과 카드 + 에러/재시도
+- `StreamingView`: LLM 추론 텍스트 실시간 표시, 도구 호출 진행 상태, auto-scroll
 - `RecommendationHistory`: 날짜별 접이식 목록 (AnalysisHistory 패턴 답습)
 - 페이지 재진입 시 항상 빈 상태 시작 — 이전 결과는 History에서만 확인

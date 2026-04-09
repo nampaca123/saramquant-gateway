@@ -130,6 +130,8 @@ $directionCtx
 - 웹 검색은 필요할 때만 — 특정 종목의 최근 이슈 확인이나 시장 동향 검증용.
 - 최종 추천 전에 반드시 evaluate_portfolio로 리스크 검증.
 - 기존 보유 종목의 상세 데이터가 필요하면 get_stock_detail 사용.
+- **독립적인 도구는 한 번에 호출하세요** (예: screen_stocks + get_sector_overview, 또는 여러 종목의 get_stock_detail을 동시에).
+- 도구 호출은 총 **7회 이내**로 효율적으로 사용하세요.
 
 ## 출력 형식
 최종 답변은 반드시 아래 JSON만 출력하세요. 다른 텍스트는 넣지 마세요.
@@ -198,6 +200,8 @@ Use tools **autonomously** based on your judgment. No fixed order, but follow th
 - Web search only when needed — to verify recent issues for specific stocks or validate market trends.
 - Always run evaluate_portfolio before finalizing recommendations.
 - Use get_stock_detail if you need deeper data on existing holdings.
+- **Call independent tools in a single turn** (e.g., screen_stocks + get_sector_overview together, or multiple get_stock_detail calls at once).
+- Keep total tool calls to **7 or fewer** — be efficient.
 
 ## Output Format
 Your final response must contain ONLY the JSON below. No other text.

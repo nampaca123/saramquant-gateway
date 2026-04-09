@@ -39,3 +39,9 @@ data class ProgressEvent(
     val step: String,
     val message: String,
 )
+
+data class ThinkingEvent(val text: String)
+
+data class ToolCallEvent(val tool: String, val args: Map<String, Any?>)
+
+data class ToolResultEvent(val tool: String, val summary: String, val durationMs: Long)
