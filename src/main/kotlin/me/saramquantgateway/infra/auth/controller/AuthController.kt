@@ -5,6 +5,7 @@ import me.saramquantgateway.infra.auth.dto.ManualLoginRequest
 import me.saramquantgateway.infra.auth.dto.ManualSignupRequest
 import me.saramquantgateway.infra.auth.dto.ResetPasswordRequest
 import me.saramquantgateway.infra.auth.service.AuthService
+import me.saramquantgateway.infra.jwt.service.RefreshTokenService
 import me.saramquantgateway.infra.systememail.service.EmailVerificationService
 import me.saramquantgateway.infra.oauth.lib.OAuthProperties
 import me.saramquantgateway.infra.security.CookieUtil
@@ -104,19 +105,29 @@ class AuthController(
     fun manualLogin(
         @Valid @RequestBody req: ManualLoginRequest,
         response: HttpServletResponse,
-    ): ResponseEntity<Void> {
-        val result = authService.manualLogin(req)
-        cookieUtil.setAccessToken(response, result.accessToken)
-        cookieUtil.setRefreshToken(response, result.refreshToken)
-        return ResponseEntity.ok().build()
+    ): ResponseEntity<Map<String, String>> {
+        return try {
+            val result = authService.manualLogin(req)
+            cookieUtil.setAccessToken(response, result.accessToken)
+            cookieUtil.setRefreshToken(response, result.refreshToken)
+            ResponseEntity.ok().build()
+        } catch (_: AuthService.InvalidCredentialsException) {
+            cookieUtil.clearAll(response)
+            ResponseEntity.status(401)
+                .body(mapOf("code" to "INVALID_CREDENTIALS", "message" to "Invalid email or password."))
+        }
     }
 
     // ── Token management ──
 
     @PostMapping("/api/auth/refresh")
-    fun refresh(request: HttpServletRequest, response: HttpServletResponse): ResponseEntity<Void> {
+    fun refresh(request: HttpServletRequest, response: HttpServletResponse): ResponseEntity<Map<String, String>> {
         val rawToken = cookieUtil.extractRefreshToken(request)
-            ?: return ResponseEntity.status(401).build()
+            ?: run {
+                cookieUtil.clearAll(response)
+                return ResponseEntity.status(401)
+                    .body(mapOf("code" to "SESSION_EXPIRED", "message" to "Session expired. Please log in again."))
+            }
 
         try {
             val result = authService.refresh(rawToken)
@@ -125,7 +136,16 @@ class AuthController(
             return ResponseEntity.ok().build()
         } catch (_: AuthService.AccountDeactivatedException) {
             cookieUtil.clearAll(response)
-            return ResponseEntity.status(403).build()
+            return ResponseEntity.status(403)
+                .body(mapOf("code" to "ACCOUNT_DEACTIVATED", "message" to "Account deactivated."))
+        } catch (_: RefreshTokenService.InvalidRefreshTokenException) {
+            cookieUtil.clearAll(response)
+            return ResponseEntity.status(401)
+                .body(mapOf("code" to "SESSION_EXPIRED", "message" to "Session expired. Please log in again."))
+        } catch (_: RefreshTokenService.TokenReusedException) {
+            cookieUtil.clearAll(response)
+            return ResponseEntity.status(401)
+                .body(mapOf("code" to "SESSION_EXPIRED", "message" to "Session expired. Please log in again."))
         }
     }
 
