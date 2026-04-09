@@ -24,6 +24,7 @@ class RecommendationAgentService(
     private val toolExecutor: RecommendationToolExecutor,
     private val toolDefs: RecommendationToolDefinitions,
     private val contextBuilder: RecommendationContextBuilder,
+    private val dashboardService: me.saramquantgateway.feature.dashboard.service.DashboardService,
     private val recRepo: PortfolioRecommendationRepository,
     private val props: LlmProperties,
     private val objectMapper: ObjectMapper,
@@ -82,10 +83,15 @@ class RecommendationAgentService(
             emitStepProgress(emitter, "ANALYZING_PORTFOLIO", req.lang)
             val precomputed = contextBuilder.build(portfolio, req.lang)
 
+            val availableSectors = RecommendationContextBuilder.expandMarketGroup(req.marketGroup)
+                .flatMap { dashboardService.sectors(it) }
+                .distinct()
+                .sorted()
+
             val messages = mutableListOf(
                 MessageParam.builder()
                     .role(MessageParam.Role.USER)
-                    .content(RecommendationPrompts.userMessage(portfolio, req.lang, req.direction, profile, precomputed))
+                    .content(RecommendationPrompts.userMessage(portfolio, req.lang, req.direction, profile, precomputed, availableSectors))
                     .build()
             )
 

@@ -89,7 +89,7 @@ class RecommendationContextBuilder(
             val fund = fundamentals[h.stockId]
             val fac = factors[h.stockId]
 
-            sb.appendLine("| ${h.stockId} | ${h.name}(${h.symbol}) | $weight | $pnl | ${h.summaryTier ?: "-"} | ${fmt(ind?.beta)} | ${fmt(ind?.sharpe)} | ${fmt(fund?.per)} | ${fmt(fund?.roe)} | ${fmt(fund?.debtRatio, 0)} | ${fmt(fac?.sizeZ)} | ${fmt(fac?.valueZ)} | ${fmt(fac?.momentumZ)} | ${fmt(fac?.volatilityZ)} | ${fmt(fac?.qualityZ)} | ${fmt(fac?.leverageZ)} |")
+            sb.appendLine("| ${h.stockId} | ${h.name}(${h.symbol}) | $weight | $pnl | ${h.summaryTier ?: "-"} | ${fmt(ind?.beta)} | ${fmt(ind?.sharpe)} | ${fmt(fund?.per)} | ${fmtPct(fund?.roe)} | ${fmtPct(fund?.debtRatio, 0)} | ${fmt(fac?.sizeZ)} | ${fmt(fac?.valueZ)} | ${fmt(fac?.momentumZ)} | ${fmt(fac?.volatilityZ)} | ${fmt(fac?.qualityZ)} | ${fmt(fac?.leverageZ)} |")
         }
 
         return sb.toString()
@@ -172,7 +172,7 @@ class RecommendationContextBuilder(
         for (mkt in markets) {
             val latest = sectorAggRepo.findTop1ByMarketOrderByDateDesc(mkt) ?: continue
             for (s in sectorAggRepo.findByMarketAndDate(mkt, latest.date)) {
-                sb.appendLine("| ${s.sector} | ${s.stockCount} | ${fmt(s.medianPer)} | ${fmt(s.medianRoe)} | ${fmt(s.medianDebtRatio, 0)} |")
+                sb.appendLine("| ${s.sector} | ${s.stockCount} | ${fmt(s.medianPer)} | ${fmtPct(s.medianRoe)} | ${fmtPct(s.medianDebtRatio, 0)} |")
             }
         }
 
@@ -181,4 +181,7 @@ class RecommendationContextBuilder(
 
     private fun fmt(v: BigDecimal?, decimals: Int = 1): String =
         v?.setScale(decimals, RoundingMode.HALF_UP)?.toPlainString() ?: "-"
+
+    private fun fmtPct(v: BigDecimal?, decimals: Int = 1): String =
+        v?.multiply(BigDecimal(100))?.setScale(decimals, RoundingMode.HALF_UP)?.toPlainString() ?: "-"
 }

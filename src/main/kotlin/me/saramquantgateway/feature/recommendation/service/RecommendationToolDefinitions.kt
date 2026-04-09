@@ -17,11 +17,15 @@ class RecommendationToolDefinitions {
 
     private fun findCandidates() = Tool.builder()
         .name("find_candidates")
-        .description("""Search for candidate stocks matching your investment thesis. Returns enriched results with factor exposures and sector comparisons — no follow-up detail lookups needed.
+        .description("""Search for candidate stocks. Returns enriched results with factor exposures and sector comparisons — no follow-up lookups needed.
 
 Numeric filters (beta, sharpe, ROE, debt ratio, risk tiers) are automatically applied based on the user's direction. You only choose WHAT to search for (sectors, sorting), not HOW to filter.
 
-Example: {"market": "KR", "sectors": ["Technology", "Healthcare"], "sort": "sharpe_desc", "limit": 8}
+Important: KR market uses Korean sector names (전기전자, 제약, 금융, etc.), US market uses English (Technology, Health Care, Finance, etc.). Use exact sector names from the pre-provided sector overview.
+
+Returns roePercent/debtRatioPercent in % (e.g. roePercent=8.1 means 8.1%).
+
+Example: {"market": "KR", "sectors": ["전기전자", "제약"], "sort": "sharpe_desc", "limit": 8}
 Example: {"market": "US", "exclude_sectors": ["Utilities"], "exclude_stock_ids": [123, 456]}""")
         .inputSchema(Tool.InputSchema.builder()
             .type(JsonValue.from("object"))

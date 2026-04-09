@@ -102,7 +102,9 @@ class RecommendationToolExecutor(
             val base = mutableMapOf<String, Any?>(
                 "stockId" to s.stockId, "symbol" to s.symbol, "name" to s.name,
                 "sector" to s.sector, "riskTier" to s.summaryTier,
-                "beta" to s.beta, "sharpe" to s.sharpe, "per" to s.per, "roe" to s.roe, "debtRatio" to s.debtRatio,
+                "beta" to s.beta, "sharpe" to s.sharpe, "per" to s.per,
+                "roePercent" to s.roe?.multiply(BigDecimal(100))?.setScale(1, RoundingMode.HALF_UP),
+                "debtRatioPercent" to s.debtRatio?.multiply(BigDecimal(100))?.setScale(1, RoundingMode.HALF_UP),
             )
 
             if (fac != null) {
@@ -206,8 +208,8 @@ class RecommendationToolExecutor(
                 "beta" to weightedAvg { indicators[it]?.beta },
                 "sharpe" to weightedAvg { indicators[it]?.sharpe },
                 "per" to weightedAvg { fundamentals[it]?.per },
-                "roe" to weightedAvg { fundamentals[it]?.roe },
-                "debtRatio" to weightedAvg { fundamentals[it]?.debtRatio },
+                "roePercent" to weightedAvg { fundamentals[it]?.roe }?.let { it * 100 },
+                "debtRatioPercent" to weightedAvg { fundamentals[it]?.debtRatio }?.let { it * 100 },
             ),
             "warnings" to warnings,
         )
@@ -226,25 +228,25 @@ class RecommendationToolExecutor(
 
     private fun directionPreset(dir: RecommendationDirection) = when (dir) {
         CONSERVATIVE -> DirectionPreset(
-            tiers = listOf("VERY_LOW", "LOW"),
+            tiers = listOf("STABLE"),
             betaMax = BigDecimal("0.8"),
             sharpeMin = BigDecimal("0.3"),
-            roeMin = BigDecimal("5"),
-            debtRatioMax = BigDecimal("150"),
+            roeMin = BigDecimal("0.05"),
+            debtRatioMax = BigDecimal("1.5"),
         )
         GROWTH -> DirectionPreset(
-            tiers = listOf("LOW", "MODERATE", "HIGH"),
+            tiers = null,
             betaMax = null,
             sharpeMin = BigDecimal("0.2"),
-            roeMin = BigDecimal("8"),
-            debtRatioMax = BigDecimal("250"),
+            roeMin = BigDecimal("0.08"),
+            debtRatioMax = BigDecimal("2.5"),
         )
         IMPROVE -> DirectionPreset(
-            tiers = listOf("VERY_LOW", "LOW", "MODERATE"),
+            tiers = listOf("STABLE", "CAUTION"),
             betaMax = null,
             sharpeMin = BigDecimal("0.2"),
-            roeMin = BigDecimal("5"),
-            debtRatioMax = BigDecimal("200"),
+            roeMin = BigDecimal("0.05"),
+            debtRatioMax = BigDecimal("2.0"),
         )
     }
 

@@ -17,6 +17,7 @@ object RecommendationPrompts {
         direction: RecommendationDirection,
         profile: UserProfile?,
         precomputed: RecommendationContextBuilder.PrecomputedContext?,
+        availableSectors: List<String> = emptyList(),
     ): String {
         val sb = StringBuilder()
 
@@ -26,7 +27,7 @@ object RecommendationPrompts {
 
             if (precomputed != null) {
                 sb.appendLine("## Current Portfolio (pre-analyzed)")
-                sb.appendLine("Legend: β=Beta, Sh=Sharpe, PE=PER, DR=DebtRatio, f.*=factor z-scores (sz=size, va=value, mo=momentum, vo=volatility, qu=quality, le=leverage)")
+                sb.appendLine("Legend: β=Beta, Sh=Sharpe, PE=PER, ROE=ROE%, DR=DebtRatio%, f.*=factor z-scores (sz=size, va=value, mo=momentum, vo=volatility, qu=quality, le=leverage)")
                 sb.appendLine()
                 sb.appendLine(precomputed.holdingsTable)
                 sb.appendLine()
@@ -36,6 +37,13 @@ object RecommendationPrompts {
                 sb.appendLine("## ${precomputed.sectorOverview}")
             } else {
                 sb.appendLine("(Empty portfolio — no holdings. Build from scratch.)")
+            }
+
+            if (availableSectors.isNotEmpty()) {
+                sb.appendLine()
+                sb.appendLine("## Available Sectors")
+                sb.appendLine("Use these exact names in find_candidates sectors/exclude_sectors:")
+                sb.appendLine(availableSectors.joinToString(", "))
             }
 
             sb.appendLine()
@@ -49,7 +57,7 @@ object RecommendationPrompts {
 
             if (precomputed != null) {
                 sb.appendLine("## 현재 포트폴리오 (사전 분석 완료)")
-                sb.appendLine("범례: β=베타, Sh=샤프비율, PE=PER, DR=부채비율, f.*=팩터 z-score (sz=규모, va=가치, mo=모멘텀, vo=변동성, qu=퀄리티, le=레버리지)")
+                sb.appendLine("범례: β=베타, Sh=샤프비율, PE=PER, ROE=ROE(%), DR=부채비율(%), f.*=팩터 z-score (sz=규모, va=가치, mo=모멘텀, vo=변동성, qu=퀄리티, le=레버리지)")
                 sb.appendLine()
                 sb.appendLine(precomputed.holdingsTable)
                 sb.appendLine()
@@ -59,6 +67,13 @@ object RecommendationPrompts {
                 sb.appendLine("## ${precomputed.sectorOverview}")
             } else {
                 sb.appendLine("(빈 포트폴리오 — 보유 종목 없음. 처음부터 구성해 주세요.)")
+            }
+
+            if (availableSectors.isNotEmpty()) {
+                sb.appendLine()
+                sb.appendLine("## 사용 가능한 섹터")
+                sb.appendLine("find_candidates의 sectors/exclude_sectors에는 아래 이름을 정확히 사용하세요:")
+                sb.appendLine(availableSectors.joinToString(", "))
             }
 
             sb.appendLine()
