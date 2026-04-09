@@ -1,16 +1,13 @@
 package me.saramquantgateway.feature.recommendation.service
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import me.saramquantgateway.domain.enum.market.Country
-import me.saramquantgateway.domain.enum.market.Maturity
-import me.saramquantgateway.domain.enum.stock.Market
+import me.saramquantgateway.domain.enum.recommendation.RecommendationDirection
+import me.saramquantgateway.domain.enum.recommendation.RecommendationDirection.*
 import me.saramquantgateway.domain.repository.factor.FactorCovarianceRepository
 import me.saramquantgateway.domain.repository.factor.FactorExposureRepository
 import me.saramquantgateway.domain.repository.fundamental.StockFundamentalRepository
 import me.saramquantgateway.domain.repository.indicator.StockIndicatorRepository
-import me.saramquantgateway.domain.repository.market.RiskFreeRateRepository
 import me.saramquantgateway.domain.repository.market.SectorAggregateRepository
-import me.saramquantgateway.domain.repository.riskbadge.RiskBadgeRepository
 import me.saramquantgateway.domain.repository.stock.StockRepository
 import me.saramquantgateway.feature.dashboard.dto.ScreenerFilter
 import me.saramquantgateway.feature.dashboard.service.DashboardService
@@ -24,139 +21,114 @@ class RecommendationToolExecutor(
     private val stockRepo: StockRepository,
     private val indicatorRepo: StockIndicatorRepository,
     private val fundamentalRepo: StockFundamentalRepository,
-    private val badgeRepo: RiskBadgeRepository,
     private val factorExposureRepo: FactorExposureRepository,
     private val factorCovRepo: FactorCovarianceRepository,
     private val sectorAggRepo: SectorAggregateRepository,
-    private val riskFreeRateRepo: RiskFreeRateRepository,
     private val objectMapper: ObjectMapper,
 ) {
     companion object {
         private val FACTOR_NAMES = listOf("size", "value", "momentum", "volatility", "quality", "leverage")
     }
 
+    var direction: RecommendationDirection = IMPROVE
+
     fun execute(toolName: String, input: Map<String, Any?>): String = try {
         when (toolName) {
-            "screen_stocks" -> screenStocks(input)
-            "get_stock_detail" -> getStockDetail(input)
-            "get_sector_overview" -> getSectorOverview(input)
-            "evaluate_portfolio" -> evaluatePortfolio(input)
+            "find_candidates" -> findCandidates(input)
+            "validate_portfolio" -> validatePortfolio(input)
             else -> objectMapper.writeValueAsString(mapOf("error" to "Unknown tool: $toolName"))
         }
     } catch (e: Exception) {
         objectMapper.writeValueAsString(mapOf("error" to (e.message ?: "Unknown error")))
     }
 
-    fun resolveStockName(toolName: String, input: Map<String, Any?>): String? {
-        if (toolName != "get_stock_detail") return null
-        val stockId = (input["stock_id"] as Number).toLong()
-        return stockRepo.findById(stockId).orElse(null)?.name
-    }
+    fun resolveStockName(toolName: String, input: Map<String, Any?>): String? = null
 
-    private fun screenStocks(input: Map<String, Any?>): String {
-        val filter = ScreenerFilter(
-            market = input["market"] as? String,
-            tiers = asList(input["tiers"]),
-            sector = input["sector"] as? String,
-            sort = input["sort"] as? String ?: "sharpe_desc",
-            size = ((input["size"] as? Number)?.toInt() ?: 20).coerceAtMost(40),
-            betaMin = toBd(input["beta_min"]), betaMax = toBd(input["beta_max"]),
-            sharpeMin = toBd(input["sharpe_min"]),
-            roeMin = toBd(input["roe_min"]),
-            debtRatioMax = toBd(input["debt_ratio_max"]),
-            perMax = toBd(input["per_max"]),
-        )
-        val page = dashboardService.list(filter)
-        val items = page.content.map { s ->
-            mapOf(
-                "stockId" to s.stockId, "symbol" to s.symbol, "name" to s.name,
-                "market" to s.market, "sector" to s.sector, "summaryTier" to s.summaryTier,
-                "beta" to s.beta, "sharpe" to s.sharpe, "per" to s.per, "pbr" to s.pbr,
-                "roe" to s.roe, "debtRatio" to s.debtRatio,
-            )
-        }
-        return objectMapper.writeValueAsString(mapOf("stocks" to items, "total" to page.totalElements))
-    }
-
-    private fun getStockDetail(input: Map<String, Any?>): String {
-        val stockId = (input["stock_id"] as Number).toLong()
-        val stock = stockRepo.findById(stockId).orElseThrow { IllegalArgumentException("Stock not found: $stockId") }
-
-        val indicator = indicatorRepo.findTop1ByStockIdOrderByDateDesc(stockId)
-        val fundamental = fundamentalRepo.findTop1ByStockIdOrderByDateDesc(stockId)
-        val badge = badgeRepo.findByStockId(stockId)
-        val factor = factorExposureRepo.findTop1ByStockIdOrderByDateDesc(stockId)
-        val sectorAgg = stock.sector?.let { sectorAggRepo.findTop1ByMarketAndSectorOrderByDateDesc(stock.market, it) }
-        val country = Country.forMarket(stock.market)
-        val riskFreeRate = riskFreeRateRepo.findTop1ByCountryAndMaturityOrderByDateDesc(country, Maturity.Y1)?.rate
-
-        val result = mutableMapOf<String, Any?>(
-            "stockId" to stock.id, "symbol" to stock.symbol, "name" to stock.name,
-            "market" to stock.market.name, "sector" to stock.sector,
-        )
-
-        indicator?.let {
-            result["indicators"] = mapOf(
-                "date" to it.date, "rsi14" to it.rsi14, "macd" to it.macd,
-                "macdSignal" to it.macdSignal, "macdHist" to it.macdHist,
-                "stochK" to it.stochK, "stochD" to it.stochD,
-                "bbUpper" to it.bbUpper, "bbMiddle" to it.bbMiddle, "bbLower" to it.bbLower,
-                "adx14" to it.adx14, "atr14" to it.atr14,
-                "sma20" to it.sma20, "ema20" to it.ema20,
-                "beta" to it.beta, "alpha" to it.alpha, "sharpe" to it.sharpe,
-            )
-        }
-
-        fundamental?.let {
-            result["fundamentals"] = mapOf(
-                "date" to it.date, "per" to it.per, "pbr" to it.pbr,
-                "eps" to it.eps, "bps" to it.bps,
-                "roe" to it.roe, "debtRatio" to it.debtRatio, "operatingMargin" to it.operatingMargin,
-            )
-        }
-
-        factor?.let {
-            result["factorExposure"] = mapOf(
-                "date" to it.date,
-                "size" to it.sizeZ, "value" to it.valueZ, "momentum" to it.momentumZ,
-                "volatility" to it.volatilityZ, "quality" to it.qualityZ, "leverage" to it.leverageZ,
-            )
-        }
-
-        badge?.let {
-            result["riskBadge"] = mapOf("summaryTier" to it.summaryTier, "dimensions" to it.dimensions)
-        }
-
-        sectorAgg?.let {
-            result["sectorComparison"] = mapOf(
-                "sector" to it.sector, "stockCount" to it.stockCount,
-                "medianPer" to it.medianPer, "medianPbr" to it.medianPbr, "medianRoe" to it.medianRoe,
-                "medianOpMargin" to it.medianOperatingMargin, "medianDebtRatio" to it.medianDebtRatio,
-            )
-        }
-
-        riskFreeRate?.let { result["riskFreeRate"] = it }
-
-        return objectMapper.writeValueAsString(result)
-    }
-
-    private fun getSectorOverview(input: Map<String, Any?>): String {
-        val market = Market.valueOf(input["market"] as String)
-        val latest = sectorAggRepo.findTop1ByMarketOrderByDateDesc(market)
-        val date = latest?.date ?: return objectMapper.writeValueAsString(mapOf("sectors" to emptyList<Any>()))
-
-        val sectors = sectorAggRepo.findByMarketAndDate(market, date).map { s ->
-            mapOf(
-                "sector" to s.sector, "stockCount" to s.stockCount,
-                "medianPer" to s.medianPer, "medianPbr" to s.medianPbr, "medianRoe" to s.medianRoe,
-                "medianOpMargin" to s.medianOperatingMargin, "medianDebtRatio" to s.medianDebtRatio,
-            )
-        }
-        return objectMapper.writeValueAsString(mapOf("market" to market.name, "date" to date, "sectors" to sectors))
-    }
+    // ── find_candidates: direction-preset filters + AI sectors/sort + auto enrichment ──
 
     @Suppress("UNCHECKED_CAST")
-    private fun evaluatePortfolio(input: Map<String, Any?>): String {
+    private fun findCandidates(input: Map<String, Any?>): String {
+        val marketGroup = input["market"] as? String ?: "KR"
+        val markets = RecommendationContextBuilder.expandMarketGroupStrings(marketGroup)
+        val sectors = (input["sectors"] as? List<*>)?.filterIsInstance<String>()
+        val excludeSectors = (input["exclude_sectors"] as? List<*>)?.filterIsInstance<String>()
+        val excludeIds = (input["exclude_stock_ids"] as? List<*>)?.mapNotNull { (it as? Number)?.toLong() }
+        val sort = input["sort"] as? String ?: "sharpe_desc"
+        val limit = ((input["limit"] as? Number)?.toInt() ?: 8).coerceIn(1, 15)
+
+        val preset = directionPreset(direction)
+
+        val effectiveSectors = when {
+            sectors != null -> sectors
+            excludeSectors != null -> null
+            else -> null
+        }
+
+        val filter = ScreenerFilter(
+            markets = markets,
+            sectors = effectiveSectors,
+            excludeStockIds = excludeIds,
+            tiers = preset.tiers,
+            sort = sort,
+            size = limit,
+            betaMax = preset.betaMax,
+            sharpeMin = preset.sharpeMin,
+            roeMin = preset.roeMin,
+            debtRatioMax = preset.debtRatioMax,
+        )
+
+        var page = dashboardService.list(filter)
+
+        // If sectors filter returned 0, try without sector constraint
+        if (page.content.isEmpty() && effectiveSectors != null) {
+            page = dashboardService.list(filter.copy(sectors = null))
+        }
+
+        // Filter out excluded sectors client-side (SQL handles sectors IN but not NOT IN for the sectors field)
+        val items = if (excludeSectors != null) {
+            page.content.filter { it.sector == null || it.sector !in excludeSectors }
+        } else {
+            page.content
+        }
+
+        val stockIds = items.map { it.stockId }
+        val factors = if (stockIds.isNotEmpty()) factorExposureRepo.findLatestByStockIds(stockIds).associateBy { it.stockId } else emptyMap()
+        val sectorAggs = buildSectorMedians(markets)
+
+        val candidates = items.map { s ->
+            val fac = factors[s.stockId]
+            val sectorMed = s.sector?.let { sectorAggs[it] }
+
+            val base = mutableMapOf<String, Any?>(
+                "stockId" to s.stockId, "symbol" to s.symbol, "name" to s.name,
+                "sector" to s.sector, "riskTier" to s.summaryTier,
+                "beta" to s.beta, "sharpe" to s.sharpe, "per" to s.per, "roe" to s.roe, "debtRatio" to s.debtRatio,
+            )
+
+            if (fac != null) {
+                base["factors"] = mapOf(
+                    "size" to fac.sizeZ, "value" to fac.valueZ, "momentum" to fac.momentumZ,
+                    "volatility" to fac.volatilityZ, "quality" to fac.qualityZ, "leverage" to fac.leverageZ,
+                )
+            }
+
+            if (sectorMed != null) {
+                base["vsSector"] = mapOf(
+                    "per" to rankVsMedian(s.per, sectorMed.medianPer),
+                    "roe" to rankVsMedian(s.roe, sectorMed.medianRoe, higherIsBetter = true),
+                )
+            }
+
+            base
+        }
+
+        return objectMapper.writeValueAsString(mapOf("candidates" to candidates, "totalMatched" to page.totalElements))
+    }
+
+    // ── validate_portfolio: same as old evaluate_portfolio ──
+
+    @Suppress("UNCHECKED_CAST")
+    private fun validatePortfolio(input: Map<String, Any?>): String {
         val stocks = input["stocks"] as List<Map<String, Any>>
         val stockIds = stocks.map { (it["stock_id"] as Number).toLong() }
         val weights = stocks.map { (it["weight"] as Number).toDouble() }
@@ -199,7 +171,6 @@ class RecommendationToolExecutor(
             val sector = stockEntities[id]?.sector ?: "Unknown"
             sectorDist[sector] = (sectorDist[sector] ?: 0.0) + weights[i]
         }
-
         val hhi = weights.sumOf { it * it }
 
         fun weightedAvg(extract: (Long) -> BigDecimal?): Double? {
@@ -243,11 +214,63 @@ class RecommendationToolExecutor(
         return objectMapper.writeValueAsString(result)
     }
 
-    @Suppress("UNCHECKED_CAST")
-    private fun asList(v: Any?): List<String>? = v as? List<String>
+    // ── Direction presets ──
 
-    private fun toBd(v: Any?): BigDecimal? = when (v) {
-        is Number -> BigDecimal(v.toDouble())
-        else -> null
+    private data class DirectionPreset(
+        val tiers: List<String>?,
+        val betaMax: BigDecimal?,
+        val sharpeMin: BigDecimal?,
+        val roeMin: BigDecimal?,
+        val debtRatioMax: BigDecimal?,
+    )
+
+    private fun directionPreset(dir: RecommendationDirection) = when (dir) {
+        CONSERVATIVE -> DirectionPreset(
+            tiers = listOf("VERY_LOW", "LOW"),
+            betaMax = BigDecimal("0.8"),
+            sharpeMin = BigDecimal("0.3"),
+            roeMin = BigDecimal("5"),
+            debtRatioMax = BigDecimal("150"),
+        )
+        GROWTH -> DirectionPreset(
+            tiers = listOf("LOW", "MODERATE", "HIGH"),
+            betaMax = null,
+            sharpeMin = BigDecimal("0.2"),
+            roeMin = BigDecimal("8"),
+            debtRatioMax = BigDecimal("250"),
+        )
+        IMPROVE -> DirectionPreset(
+            tiers = listOf("VERY_LOW", "LOW", "MODERATE"),
+            betaMax = null,
+            sharpeMin = BigDecimal("0.2"),
+            roeMin = BigDecimal("5"),
+            debtRatioMax = BigDecimal("200"),
+        )
+    }
+
+    // ── Helpers ──
+
+    private data class SectorMedian(val medianPer: BigDecimal?, val medianRoe: BigDecimal?)
+
+    private fun buildSectorMedians(markets: List<String>): Map<String, SectorMedian> {
+        val result = mutableMapOf<String, SectorMedian>()
+        for (mktStr in markets) {
+            val mkt = try { me.saramquantgateway.domain.enum.stock.Market.valueOf(mktStr) } catch (_: Exception) { continue }
+            val latest = sectorAggRepo.findTop1ByMarketOrderByDateDesc(mkt) ?: continue
+            for (s in sectorAggRepo.findByMarketAndDate(mkt, latest.date)) {
+                result[s.sector] = SectorMedian(s.medianPer, s.medianRoe)
+            }
+        }
+        return result
+    }
+
+    private fun rankVsMedian(value: BigDecimal?, median: BigDecimal?, higherIsBetter: Boolean = false): String {
+        if (value == null || median == null || median.signum() == 0) return "N/A"
+        val ratio = value.toDouble() / median.toDouble()
+        return if (higherIsBetter) {
+            when { ratio >= 1.2 -> "well_above"; ratio >= 1.0 -> "above_median"; ratio >= 0.8 -> "below_median"; else -> "well_below" }
+        } else {
+            when { ratio <= 0.8 -> "cheap"; ratio <= 1.0 -> "below_median"; ratio <= 1.2 -> "above_median"; else -> "expensive" }
+        }
     }
 }

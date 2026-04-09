@@ -47,7 +47,7 @@ class DashboardQueryRepository(
 
         val baseSql = """
             FROM stocks s
-            JOIN risk_badges rb ON rb.stock_id = s.id
+            LEFT JOIN risk_badges rb ON rb.stock_id = s.id
             LEFT JOIN LATERAL (
                 SELECT stock_id,
                        NULLIF(beta, 'NaN') AS beta, NULLIF(rsi_14, 'NaN') AS rsi_14,
@@ -110,7 +110,11 @@ class DashboardQueryRepository(
     private fun buildWhere(filter: ScreenerFilter): Pair<String, MutableMap<String, Any>> {
         val conditions = mutableListOf("s.is_active = true")
         val params = mutableMapOf<String, Any>()
-        filter.market?.let {
+        filter.markets?.let { mkts ->
+            val placeholders = mkts.indices.joinToString(", ") { ":mkt$it" }
+            conditions += "s.market::text IN ($placeholders)"
+            mkts.forEachIndexed { i, m -> params["mkt$i"] = m }
+        } ?: filter.market?.let {
             conditions += "s.market::text = :market"
             params["market"] = it
         }
@@ -120,9 +124,20 @@ class DashboardQueryRepository(
             conditions += "rb.summary_tier IN ($placeholders)"
             tiers.forEachIndexed { i, t -> params["tier$i"] = t }
         }
-        filter.sector?.let {
+        filter.sectors?.let { secs ->
+            val placeholders = secs.indices.joinToString(", ") { i -> ":sec$i" }
+            conditions += "s.sector IN ($placeholders)"
+            secs.forEachIndexed { i, s -> params["sec$i"] = s }
+        } ?: filter.sector?.let {
             conditions += "s.sector = :sector"
             params["sector"] = it
+        }
+        filter.excludeStockIds?.let { ids ->
+            if (ids.isNotEmpty()) {
+                val placeholders = ids.indices.joinToString(", ") { ":exId$it" }
+                conditions += "s.id NOT IN ($placeholders)"
+                ids.forEachIndexed { i, id -> params["exId$i"] = id }
+            }
         }
 
         addRange(conditions, params, "si.beta", "betaMin", "betaMax", filter.betaMin, filter.betaMax)

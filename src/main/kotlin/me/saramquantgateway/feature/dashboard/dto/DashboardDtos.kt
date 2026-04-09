@@ -35,6 +35,9 @@ data class DashboardPage(
 
 data class ScreenerFilter(
     val market: String? = null,
+    val markets: List<String>? = null,
+    val sectors: List<String>? = null,
+    val excludeStockIds: List<Long>? = null,
     val tiers: List<String>? = null,
     val sector: String? = null,
     val sort: String = "name_asc",
@@ -66,7 +69,9 @@ data class ScreenerFilter(
     val valuationTiers: List<String>? = null,
 ) {
     fun needsFullQuery(): Boolean = sort !in SIMPLE_SORTS
-            || query != null || hasDimensionFilters() || listOfNotNull(
+            || query != null || hasDimensionFilters()
+            || markets != null || sectors != null || excludeStockIds != null
+            || listOfNotNull(
         betaMin, betaMax, rsiMin, rsiMax, sharpeMin, sharpeMax,
         atrMin, atrMax, adxMin, adxMax,
         perMin, perMax, pbrMin, pbrMax, roeMin, roeMax,

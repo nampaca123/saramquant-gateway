@@ -23,6 +23,7 @@ import java.util.concurrent.atomic.AtomicBoolean
 class RecommendationAgentService(
     private val toolExecutor: RecommendationToolExecutor,
     private val toolDefs: RecommendationToolDefinitions,
+    private val contextBuilder: RecommendationContextBuilder,
     private val recRepo: PortfolioRecommendationRepository,
     private val props: LlmProperties,
     private val objectMapper: ObjectMapper,
@@ -37,9 +38,9 @@ class RecommendationAgentService(
     }
 
     companion object {
-        private const val MAX_ITERATIONS = 7
+        private const val MAX_ITERATIONS = 4
         private const val MAX_API_RETRIES = 2
-        private const val MAX_TOOL_RESULT_CHARS = 6000
+        private const val MAX_TOOL_RESULT_CHARS = 4000
         private const val THINKING_FLUSH_MS = 200L
         private const val HEARTBEAT_INTERVAL_MS = 5000L
     }
@@ -76,10 +77,15 @@ class RecommendationAgentService(
         emitter.onError { cancelled.set(true) }
 
         try {
+            toolExecutor.direction = req.direction
+
+            emitStepProgress(emitter, "ANALYZING_PORTFOLIO", req.lang)
+            val precomputed = contextBuilder.build(portfolio, req.lang)
+
             val messages = mutableListOf(
                 MessageParam.builder()
                     .role(MessageParam.Role.USER)
-                    .content(RecommendationPrompts.userMessage(portfolio, req.lang, req.direction, profile))
+                    .content(RecommendationPrompts.userMessage(portfolio, req.lang, req.direction, profile, precomputed))
                     .build()
             )
 
@@ -94,7 +100,7 @@ class RecommendationAgentService(
 
                 val params = MessageCreateParams.builder()
                     .model(props.recommendationModel)
-                    .maxTokens(4096)
+                    .maxTokens(3000)
                     .system(RecommendationPrompts.system(req.lang))
                     .messages(messages)
                     .tools(toolDefs.all())
@@ -321,10 +327,8 @@ class RecommendationAgentService(
     private fun buildToolSummary(name: String, result: String): String = try {
         val m = objectMapper.readValue(result, Map::class.java)
         when (name) {
-            "screen_stocks" -> "${(m["stocks"] as? List<*>)?.size ?: 0} stocks found"
-            "get_stock_detail" -> "${m["name"] ?: "Stock"} loaded"
-            "get_sector_overview" -> "${(m["sectors"] as? List<*>)?.size ?: 0} sectors"
-            "evaluate_portfolio" -> "Evaluated (${(m["warnings"] as? List<*>)?.size ?: 0} warnings)"
+            "find_candidates" -> "${(m["candidates"] as? List<*>)?.size ?: 0} candidates found"
+            "validate_portfolio" -> "Validated (${(m["warnings"] as? List<*>)?.size ?: 0} warnings)"
             else -> "Done"
         }
     } catch (_: Exception) { "Done" }
@@ -448,10 +452,8 @@ class RecommendationAgentService(
     private fun emitToolProgress(emitter: SseEmitter, toolName: String, stockName: String?, lang: String) {
         val (step, message) = when (toolName) {
             "web_search" -> "SEARCHING_MARKET" to if (lang == "en") "Researching latest market trends..." else "최신 시장 동향을 조사하고 있습니다..."
-            "get_sector_overview" -> "ANALYZING_SECTORS" to if (lang == "en") "Analyzing sector overview..." else "섹터별 현황을 분석하고 있습니다..."
-            "screen_stocks" -> "SCREENING_STOCKS" to if (lang == "en") "Screening stocks matching your risk profile..." else "리스크 성향에 맞는 종목을 검색하고 있습니다..."
-            "get_stock_detail" -> "ANALYZING_STOCK" to if (lang == "en") "Analyzing ${stockName ?: "stock"} in detail..." else "${stockName ?: "종목"}의 상세 데이터를 확인하고 있습니다..."
-            "evaluate_portfolio" -> "EVALUATING_PORTFOLIO" to if (lang == "en") "Evaluating portfolio risk..." else "포트폴리오 리스크를 검증하고 있습니다..."
+            "find_candidates" -> "SCREENING_STOCKS" to if (lang == "en") "Searching for candidate stocks..." else "후보 종목을 검색하고 있습니다..."
+            "validate_portfolio" -> "EVALUATING_PORTFOLIO" to if (lang == "en") "Validating portfolio risk..." else "포트폴리오 리스크를 검증하고 있습니다..."
             else -> "PROCESSING" to if (lang == "en") "Processing..." else "처리 중..."
         }
         try {
@@ -463,9 +465,11 @@ class RecommendationAgentService(
     }
 
     private fun emitStepProgress(emitter: SseEmitter, step: String, lang: String) {
-        val message = if (step == "BUILDING_RECOMMENDATION") {
-            if (lang == "en") "Building portfolio recommendation..." else "포트폴리오 구성 제안을 정리하고 있습니다..."
-        } else step
+        val message = when (step) {
+            "BUILDING_RECOMMENDATION" -> if (lang == "en") "Building portfolio recommendation..." else "포트폴리오 구성 제안을 정리하고 있습니다..."
+            "ANALYZING_PORTFOLIO" -> if (lang == "en") "Analyzing your portfolio..." else "포트폴리오를 분석하고 있습니다..."
+            else -> step
+        }
         try {
             emitter.send(SseEmitter.event().name("progress")
                 .data(objectMapper.writeValueAsString(ProgressEvent(step, message))))

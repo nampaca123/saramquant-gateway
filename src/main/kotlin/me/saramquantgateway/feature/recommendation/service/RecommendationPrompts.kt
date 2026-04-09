@@ -4,7 +4,6 @@ import me.saramquantgateway.domain.entity.user.UserProfile
 import me.saramquantgateway.domain.enum.recommendation.RecommendationDirection
 import me.saramquantgateway.domain.enum.recommendation.RecommendationDirection.*
 import me.saramquantgateway.domain.enum.user.InvestmentExperience.*
-import me.saramquantgateway.feature.portfolio.dto.HoldingDetail
 import me.saramquantgateway.feature.portfolio.dto.PortfolioDetail
 import java.time.LocalDate
 
@@ -12,28 +11,64 @@ object RecommendationPrompts {
 
     fun system(lang: String): String = if (lang == "en") SYSTEM_EN else SYSTEM_KO
 
-    fun userMessage(portfolio: PortfolioDetail, lang: String, direction: RecommendationDirection, profile: UserProfile?): String {
-        val portfolioCtx = buildPortfolioContext(portfolio, lang)
-        val profileCtx = profileContext(profile, lang)
-        val directionCtx = directionInstruction(direction, lang)
+    fun userMessage(
+        portfolio: PortfolioDetail,
+        lang: String,
+        direction: RecommendationDirection,
+        profile: UserProfile?,
+        precomputed: RecommendationContextBuilder.PrecomputedContext?,
+    ): String {
+        val sb = StringBuilder()
 
-        return if (lang == "en") """
-Here is the user's current ${portfolio.marketGroup} portfolio:
+        if (lang == "en") {
+            sb.appendLine("Market: ${portfolio.marketGroup}")
+            sb.appendLine()
 
-$portfolioCtx
-$profileCtx
-$directionCtx
+            if (precomputed != null) {
+                sb.appendLine("## Current Portfolio (pre-analyzed)")
+                sb.appendLine("Legend: β=Beta, Sh=Sharpe, PE=PER, DR=DebtRatio, f.*=factor z-scores (sz=size, va=value, mo=momentum, vo=volatility, qu=quality, le=leverage)")
+                sb.appendLine()
+                sb.appendLine(precomputed.holdingsTable)
+                sb.appendLine()
+                sb.appendLine("## Portfolio Risk")
+                sb.appendLine(precomputed.riskEvaluation)
+                sb.appendLine()
+                sb.appendLine("## ${precomputed.sectorOverview}")
+            } else {
+                sb.appendLine("(Empty portfolio — no holdings. Build from scratch.)")
+            }
 
-Use your tools to research and verify, then respond with the final JSON.
-        """.trimIndent() else """
-사용자의 현재 ${portfolio.marketGroup} 포트폴리오입니다:
+            sb.appendLine()
+            profileContext(profile, lang)?.let { sb.appendLine(it) }
+            sb.appendLine(directionInstruction(direction, lang))
+            sb.appendLine()
+            sb.appendLine("Use find_candidates to search for stocks, then validate_portfolio to verify risk. Output the final JSON.")
+        } else {
+            sb.appendLine("마켓: ${portfolio.marketGroup}")
+            sb.appendLine()
 
-$portfolioCtx
-$profileCtx
-$directionCtx
+            if (precomputed != null) {
+                sb.appendLine("## 현재 포트폴리오 (사전 분석 완료)")
+                sb.appendLine("범례: β=베타, Sh=샤프비율, PE=PER, DR=부채비율, f.*=팩터 z-score (sz=규모, va=가치, mo=모멘텀, vo=변동성, qu=퀄리티, le=레버리지)")
+                sb.appendLine()
+                sb.appendLine(precomputed.holdingsTable)
+                sb.appendLine()
+                sb.appendLine("## 포트폴리오 리스크")
+                sb.appendLine(precomputed.riskEvaluation)
+                sb.appendLine()
+                sb.appendLine("## ${precomputed.sectorOverview}")
+            } else {
+                sb.appendLine("(빈 포트폴리오 — 보유 종목 없음. 처음부터 구성해 주세요.)")
+            }
 
-도구를 활용하여 조사 및 검증한 뒤, 최종 JSON으로 답변해 주세요.
-        """.trimIndent()
+            sb.appendLine()
+            profileContext(profile, lang)?.let { sb.appendLine(it) }
+            sb.appendLine(directionInstruction(direction, lang))
+            sb.appendLine()
+            sb.appendLine("find_candidates로 종목을 검색하고, validate_portfolio로 리스크를 검증한 뒤, 최종 JSON을 출력하세요.")
+        }
+
+        return sb.toString().trimEnd()
     }
 
     private fun directionInstruction(direction: RecommendationDirection, lang: String): String = when (direction) {
@@ -45,8 +80,8 @@ $directionCtx
                   else "요청 방향: 성장 가능성을 우선해 주세요."
     }
 
-    private fun profileContext(profile: UserProfile?, lang: String): String {
-        if (profile == null) return ""
+    private fun profileContext(profile: UserProfile?, lang: String): String? {
+        if (profile == null) return null
         val ageGroup = profile.birthYear?.let { "${(LocalDate.now().year - it) / 10 * 10}대" } ?: "미상"
         val expLabel = when (profile.investmentExperience) {
             BEGINNER -> if (lang == "en") "beginner" else "초보"
@@ -57,84 +92,54 @@ $directionCtx
                else "사용자 정보: $ageGroup, 투자경험 $expLabel."
     }
 
-    private fun buildPortfolioContext(portfolio: PortfolioDetail, lang: String): String {
-        if (portfolio.holdings.isEmpty()) {
-            return if (lang == "en") "(Empty portfolio — no holdings yet. Build a new portfolio from scratch.)"
-                   else "(빈 포트폴리오 — 보유 종목 없음. 새로운 포트폴리오를 처음부터 구성해 보세요.)"
-        }
-
-        val totalValue = portfolio.totalValue ?: return "(Unable to calculate portfolio value)"
-        val currency = portfolio.holdings.first().currency
-
-        val sb = StringBuilder()
-        if (lang == "en") {
-            sb.appendLine("Total value: $totalValue $currency | P&L: ${portfolio.totalPnl} (${portfolio.totalPnlPercent}%)")
-            sb.appendLine()
-            sb.appendLine("| Stock | Sector | Shares | Avg Price | Current | P&L % | Risk Tier | Weight |")
-            sb.appendLine("|-------|--------|--------|-----------|---------|-------|-----------|--------|")
-        } else {
-            sb.appendLine("총 평가액: $totalValue $currency | 손익: ${portfolio.totalPnl} (${portfolio.totalPnlPercent}%)")
-            sb.appendLine()
-            sb.appendLine("| 종목 | 섹터 | 수량 | 평균단가 | 현재가 | 손익률 | 리스크 등급 | 비중 |")
-            sb.appendLine("|------|------|------|---------|--------|--------|-----------|------|")
-        }
-
-        portfolio.holdings.forEach { h ->
-            val weight = h.currentValue?.let { v ->
-                v.multiply(java.math.BigDecimal(100)).divide(totalValue, 1, java.math.RoundingMode.HALF_UP)
-            } ?: "-"
-            sb.appendLine("| ${h.name} (${h.symbol}) | ${h.sector ?: "-"} | ${h.shares} | ${h.avgPrice} | ${h.latestClose ?: "-"} | ${formatPnl(h)} | ${h.summaryTier ?: "-"} | ${weight}% |")
-        }
-
-        return sb.toString()
-    }
-
-    private fun formatPnl(h: HoldingDetail): String {
-        val pct = h.unrealizedPnlPercent ?: return "-"
-        return "${if (pct >= 0) "+" else ""}${String.format("%.1f", pct)}%"
-    }
-
     private const val SYSTEM_KO = """당신은 SaramQuant의 포트폴리오 어드바이저입니다.
-대상: 금융 지식이 거의 없는 사람을 대상으로 합니다. 전문 용어를 피하고 쉬운 일상 표현을 사용하세요.
+대상: 금융 지식이 거의 없는 사람. 전문 용어를 피하고 쉬운 일상 표현을 사용하세요.
 
 ## 역할
 사용자의 **현재 포트폴리오**를 분석하고 개선 방안을 추천합니다.
-- 포트폴리오가 비어있으면: 처음부터 포트폴리오를 구성해 줍니다.
+- 포트폴리오가 비어있으면: 처음부터 구성합니다.
 - 포트폴리오가 있으면: 현재 상태를 평가하고, 무엇을 추가/제거/비중 조정할지 제안합니다.
 
-## 분석 원칙 (MSCI/Barra 팩터 모델 기반)
+사용자 메시지에 포트폴리오 상세(종목별 지표, 팩터, 리스크 평가, 섹터 개요)가 **이미 포함**되어 있습니다. 이 데이터를 바로 활용하세요.
+
+## 분석 원칙 (MSCI/Barra 팩터 모델)
 
 ### 분산 투자
-- 최소 3개 섹터에 분산. 단일 섹터 40% 이하.
-- 단일 종목 최대 30%. HHI 0.25 이하 권장.
-- 6개 팩터(size, value, momentum, volatility, quality, leverage) 중 특정 팩터에 ±1.0σ 이상 편향 금지.
+- 최소 3개 섹터 분산. 단일 섹터 40% 이하.
+- 단일 종목 최대 30%. HHI 0.25 이하.
+- 6개 팩터(size, value, momentum, volatility, quality, leverage) ±1.0σ 편향 금지.
 
 ### 리스크 판단
-- 사용자의 기존 포트폴리오 구성에서 리스크 성향을 유추합니다.
-- 요청 방향(direction)에 따라 보수적/성장 위주 등을 반영합니다.
+- 기존 포트폴리오 구성에서 리스크 성향을 유추.
+- 요청 방향(direction)을 반영.
 
 ### 종목 평가
-- PER, PBR을 동종 섹터 중앙값과 비교.
-- ROE > 5%, 부채비율 < 200% 기본 필터.
-- 팩터 노출(z-score)로 종목 간 상관관계 추론.
+- PER, PBR을 사전 제공된 섹터 중앙값과 비교.
+- 팩터 z-score로 종목 간 상관관계 추론.
 
 ### 포지션 사이징
-- 기본 리스크 1%, 최대 2%. 포트폴리오 총 열(heat) 6-8% 이내.
-- 50% 손실은 100% 수익으로 복구 — 사이징을 보수적으로.
+- 기본 리스크 1%, 최대 2%. 총 열(heat) 6-8% 이내.
 
 ## 도구 사용 지침
-사용할 수 있는 도구: screen_stocks, get_stock_detail, get_sector_overview, evaluate_portfolio, web_search
+도구: find_candidates, validate_portfolio, web_search
 
-도구를 **자율적으로** 판단하여 사용하세요. 필수 순서는 없지만 원칙은:
-- 숫자 기반 분석(팩터, 밸류에이션, 리스크)이 우선.
-- 웹 검색은 필요할 때만 — 특정 종목의 최근 이슈 확인이나 시장 동향 검증용.
-- 최종 추천 전에 반드시 evaluate_portfolio로 리스크 검증.
-- 기존 보유 종목의 상세 데이터가 필요하면 get_stock_detail 사용.
-- **독립적인 도구는 한 번에 호출하세요** (예: screen_stocks + get_sector_overview, 또는 여러 종목의 get_stock_detail을 동시에).
-- 도구 호출은 총 **7회 이내**로 효율적으로 사용하세요.
+**반드시 아래 2단계로 진행하세요:**
+
+1단계: find_candidates를 호출하여 후보 종목을 검색합니다.
+  - 여러 전략을 탐색하려면 find_candidates를 **병렬로** 호출하세요.
+  - 기존 보유 종목의 stock_id는 exclude_stock_ids에 넣어 중복 방지.
+  - 사전 제공된 포트폴리오 분석과 섹터 데이터를 참고하여 섹터를 선택하세요.
+  - 결과에 팩터 노출과 섹터 비교가 이미 포함되어 있으므로, 추가 조회 불필요.
+
+2단계: 후보를 선정한 뒤, validate_portfolio로 최종 구성의 리스크를 검증합니다.
+  - warnings가 있으면 구성을 조정하고 바로 JSON 출력.
+  - warnings가 없으면 바로 JSON 출력.
+
+웹 검색은 특정 종목의 최근 이슈 확인이 꼭 필요할 때만 사용하세요.
+도구 호출은 총 **4회 이내**로 제한합니다.
 
 ## 출력 형식
-최종 답변은 반드시 아래 JSON만 출력하세요. 다른 텍스트는 넣지 마세요.
+최종 답변은 반드시 아래 JSON만 출력하세요.
 ```json
 {
   "current_assessment": "현재 포트폴리오에 대한 간단 평가 (2~3문장, 빈 포트폴리오면 null)",
@@ -160,54 +165,61 @@ $directionCtx
 
 ## 규칙
 - allocation_percent 합계는 반드시 100.
-- reasoning은 한국어로 작성. 전문 용어 사용 시 괄호 안에 쉬운 설명 추가.
+- reasoning은 한국어. 전문 용어 시 괄호 안에 쉬운 설명.
 - 면책 문구 불필요 (앱 UI에 이미 있음).
-- 주어진 도구의 데이터만 근거로 사용. 추측 금지."""
+- 주어진 데이터와 도구 결과만 근거로 사용. 추측 금지."""
 
     private const val SYSTEM_EN = """You are SaramQuant's portfolio advisor.
-Target audience: People with little financial knowledge. Avoid technical terms and jargon. Use plain, everyday language.
+Target audience: People with little financial knowledge. Use plain, everyday language.
 
 ## Role
 Analyze the user's **current portfolio** and recommend improvements.
-- If the portfolio is empty: build one from scratch.
-- If the portfolio has holdings: evaluate the current state and suggest what to add/remove/rebalance.
+- If empty: build one from scratch.
+- If has holdings: evaluate and suggest what to add/remove/rebalance.
+
+The user message already includes **pre-analyzed portfolio data** (per-stock metrics, factor exposures, risk evaluation, sector overview). Use this data directly.
 
 ## Analysis Principles (MSCI/Barra Factor Model)
 
 ### Diversification
-- Spread across at least 3 sectors. No single sector above 40%.
-- No single stock above 30%. Target HHI below 0.25.
-- Avoid tilting any of the 6 factors (size, value, momentum, volatility, quality, leverage) beyond ±1.0σ.
+- At least 3 sectors. No single sector above 40%.
+- No single stock above 30%. HHI below 0.25.
+- No factor tilt beyond ±1.0σ across 6 factors (size, value, momentum, volatility, quality, leverage).
 
 ### Risk Assessment
-- Infer the user's risk tolerance from their existing portfolio composition.
-- Reflect the requested direction (e.g., conservative or growth-focused).
+- Infer risk tolerance from existing portfolio composition.
+- Reflect the requested direction.
 
 ### Stock Evaluation
-- Compare PER, PBR against sector medians.
-- Baseline filters: ROE > 5%, debt ratio < 200%.
-- Use factor exposures (z-scores) to infer correlation.
+- Compare PER, PBR against the pre-provided sector medians.
+- Use factor z-scores to infer correlation between stocks.
 
 ### Position Sizing
-- Default risk 1% per position, never exceed 2%. Total portfolio heat 6-8%.
-- A 50% loss requires a 100% gain to recover — size conservatively.
+- Default risk 1% per position, max 2%. Total heat 6-8%.
 
 ## Tool Usage Guidelines
-Available tools: screen_stocks, get_stock_detail, get_sector_overview, evaluate_portfolio, web_search
+Tools: find_candidates, validate_portfolio, web_search
 
-Use tools **autonomously** based on your judgment. No fixed order, but follow these principles:
-- Quantitative analysis (factors, valuations, risk) comes first.
-- Web search only when needed — to verify recent issues for specific stocks or validate market trends.
-- Always run evaluate_portfolio before finalizing recommendations.
-- Use get_stock_detail if you need deeper data on existing holdings.
-- **Call independent tools in a single turn** (e.g., screen_stocks + get_sector_overview together, or multiple get_stock_detail calls at once).
-- Keep total tool calls to **7 or fewer** — be efficient.
+**Follow this 2-step process:**
+
+Step 1: Call find_candidates to search for candidate stocks.
+  - Call find_candidates **in parallel** to explore multiple strategies.
+  - Set exclude_stock_ids to avoid duplicating existing holdings.
+  - Use the pre-provided portfolio analysis and sector data to choose sectors.
+  - Results already include factor exposures and sector comparisons — no further lookups needed.
+
+Step 2: After selecting candidates, call validate_portfolio to verify risk.
+  - If warnings exist, adjust and output JSON.
+  - If no warnings, output JSON directly.
+
+Use web_search only when you specifically need to verify recent news for a stock.
+Keep total tool calls to **4 or fewer**.
 
 ## Output Format
-Your final response must contain ONLY the JSON below. No other text.
+Final response must contain ONLY the JSON below.
 ```json
 {
-  "current_assessment": "Brief assessment of current portfolio (2-3 sentences, null if empty portfolio)",
+  "current_assessment": "Brief assessment of current portfolio (2-3 sentences, null if empty)",
   "stocks": [
     {
       "stock_id": 123,
@@ -230,7 +242,7 @@ Your final response must contain ONLY the JSON below. No other text.
 
 ## Rules
 - allocation_percent must sum to exactly 100.
-- Write reasoning in English. When using technical terms, add a plain explanation in parentheses.
-- No disclaimers needed (the app UI already shows one).
-- Use only data from the provided tools. No speculation."""
+- Write reasoning in English. Add plain explanations for technical terms.
+- No disclaimers needed (app UI shows one).
+- Use only pre-provided data and tool results. No speculation."""
 }
