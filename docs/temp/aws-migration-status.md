@@ -19,10 +19,10 @@
 - [x] T9 calc 계약 변경
 - [x] T10 프로필 이미지 S3
 - [x] T11 JPA 제거 + 로컬 검증
-- [ ] T12 Dockerfile + caddy
-- [ ] T13 Terraform
-- [ ] T14 deploy.yml + GH 변수
-- [ ] T15 가이드 문서
+- [x] T12 Dockerfile + caddy
+- [x] T13 Terraform
+- [x] T14 deploy.yml + GH 변수
+- [x] T15 가이드 문서
 - [ ] T16 최종 리뷰→배포→완주
 
 ## 로컬 검증 결과 (T11, 2026-08-10)
@@ -44,8 +44,13 @@
 - **calc 세션에서 받아야 할 것**: 신규 `CALC_SERVER_URL`(API Gateway URL) — 수신 전까지 GH variable은 플레이스홀더. `warehouse/` Iceberg 적재 완료 여부(대시보드 실데이터 검증 게이트).
 - **calc 세션에 전달**: gateway는 calc 스펙 §8.1 계약(holdings 바디 전달)을 그대로 구현 중. §2.4의 refresh_tokens DynamoDB 권고는 채택하지 않음 — gateway는 Iceberg가 아닌 S3 KV JSON(사용자 승인)이라 해당 우려 미적용.
 
-## 사용자 액션 필요 (완주 후 정리해 재안내 예정)
+## 사용자 액션 필요
 
-1. NameCheap `api.saramquant.com` A레코드 → EIP (T16에서 값 전달)
-2. Google/Kakao 콘솔 프로덕션 redirect URI 등록
-3. Vercel `GATEWAY_INTERNAL_URL`·`COOKIE_SECURE` 갱신
+절차는 `docs/aws-deploy-guide.md` 참고.
+
+1. NameCheap `api.saramquant.com` A레코드 → EIP (첫 `main` 배포 후 GH Actions job summary에서 값 확인)
+2. Google/Kakao 콘솔에 프로덕션 redirect URI 등록 (`https://api.saramquant.com/login/oauth2/code/{google,kakao}`)
+3. Vercel `GATEWAY_INTERNAL_URL` → `https://api.saramquant.com` 갱신 후 재배포
+4. GH Variable `FRONTEND_REDIRECT_URL`·`CORS_ALLOWED_ORIGIN`을 현재 localhost 플레이스홀더에서 실제 Vercel 프로덕션 도메인으로 교체 (T14에서 임시값으로 등록됨)
+
+`COOKIE_SECURE`는 T14에서 이미 `true`로 갱신 완료 — 별도 조치 불필요.
