@@ -4,6 +4,7 @@ import com.fasterxml.jackson.module.kotlin.jacksonObjectMapper
 import me.saramquantgateway.domain.enum.market.Benchmark
 import me.saramquantgateway.domain.enum.market.Country
 import me.saramquantgateway.domain.enum.market.Maturity
+import me.saramquantgateway.domain.enum.portfolio.MarketGroup
 import me.saramquantgateway.domain.enum.stock.Market
 import me.saramquantgateway.infra.duckdb.DuckDbQueryExecutor
 import me.saramquantgateway.infra.duckdb.GlueLakeTableResolver
@@ -64,7 +65,7 @@ class LakeDaoSmokeTest {
 
         stockDao.findByIds(listOf(1L))
         stockDao.findDistinctSectors(Market.KR_KOSPI)
-        priceDao.findTop2PerStock(listOf(1L), "KR")
+        priceDao.findTop2PerStock(listOf(1L), MarketGroup.KR)
         priceDao.findTop2Benchmark(Benchmark.KR_KOSPI)
         IndicatorLakeDao(executor, resolver).findLatestByStockIds(listOf(1L))
         fundamentalDao.findLatestByStockIds(listOf(1L))

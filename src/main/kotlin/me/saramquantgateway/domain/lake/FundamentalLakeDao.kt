@@ -18,24 +18,25 @@ class FundamentalLakeDao(
     fun findLatestByStockId(stockId: Long): StockFundamental? = executor.query(
         """
         SELECT $FUNDAMENTAL_COLUMNS FROM ${fundamentalRef()}
-        WHERE stock_id = ? AND date >= ? ORDER BY date DESC LIMIT 1
+        WHERE stock_id = ? ORDER BY date DESC LIMIT 1
         """.trimIndent(),
-        listOf(stockId, latestLookbackFrom()),
+        listOf(stockId),
         ::mapFundamental,
     ).firstOrNull()
 
     fun findLatestByStockIds(stockIds: List<Long>): List<StockFundamental> {
         if (stockIds.isEmpty()) return emptyList()
+        val ref = fundamentalRef()
         return executor.query(
             """
             SELECT $FUNDAMENTAL_COLUMNS FROM (
                 SELECT stock_id, date, per, pbr, eps, bps, roe, debt_ratio, operating_margin,
                        row_number() OVER (PARTITION BY stock_id ORDER BY date DESC) AS rn
-                FROM ${fundamentalRef()}
-                WHERE date >= ? AND stock_id IN (${placeholders(stockIds.size)})
+                FROM $ref
+                WHERE date >= ${recentDatesFrom(ref)} AND stock_id IN (${placeholders(stockIds.size)})
             ) t WHERE rn = 1
             """.trimIndent(),
-            listOf(latestLookbackFrom()) + stockIds,
+            stockIds,
             ::mapFundamental,
         )
     }
@@ -48,7 +49,7 @@ class FundamentalLakeDao(
         ORDER BY fiscal_year DESC, CASE report_type
             WHEN 'Q1' THEN 1 WHEN 'Q2' THEN 2 WHEN 'Q3' THEN 3 WHEN 'FY' THEN 4 ELSE 0 END DESC
         """.trimIndent(),
-        listOf(marketGroupOf(market), stockId),
+        listOf(marketGroupOf(market).name, stockId),
         ::mapStatement,
     )
 

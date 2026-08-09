@@ -1,17 +1,20 @@
 package me.saramquantgateway.domain.lake
 
+import me.saramquantgateway.domain.enum.portfolio.MarketGroup
 import me.saramquantgateway.domain.enum.stock.Market
 import java.math.BigDecimal
 import java.sql.ResultSet
 import java.time.LocalDate
 
-// 스냅샷이 아닌 파티션 테이블에서 "최신 1건"을 찾을 때 스캔 범위를 이 기간으로 좁힌다.
-internal const val LATEST_LOOKBACK_DAYS = 90L
+// 다종목 스캔만 범위를 좁히되 벽시계가 아니라 테이블의 최신 날짜를 기준으로 삼는다.
+internal const val LATEST_LOOKBACK_DAYS = 10L
 
-internal fun latestLookbackFrom(): LocalDate = LocalDate.now().minusDays(LATEST_LOOKBACK_DAYS)
+internal fun recentDatesFrom(ref: String, whereSql: String = ""): String =
+    "(SELECT max(date) - INTERVAL '$LATEST_LOOKBACK_DAYS days' FROM $ref$whereSql)"
 
 // daily_prices/financial_statements의 market 파티션 값(KR|US)
-internal fun marketGroupOf(market: Market): String = if (market.isKorean) "KR" else "US"
+internal fun marketGroupOf(market: Market): MarketGroup =
+    if (market.isKorean) MarketGroup.KR else MarketGroup.US
 
 internal fun placeholders(count: Int): String = List(count) { "?" }.joinToString(", ")
 

@@ -3,6 +3,7 @@ package me.saramquantgateway.feature.portfolio.service
 import me.saramquantgateway.domain.document.HoldingEntry
 import me.saramquantgateway.domain.document.PortfolioDoc
 import me.saramquantgateway.domain.document.PortfolioEntry
+import me.saramquantgateway.domain.enum.portfolio.MarketGroup
 import me.saramquantgateway.domain.lake.PriceLakeDao
 import me.saramquantgateway.domain.lake.RiskBadgeLakeDao
 import me.saramquantgateway.domain.lake.StockLakeDao
@@ -39,7 +40,8 @@ class PortfolioService(
         val stockIds = holdings.map { it.stockId }
         val stockMap = stockDao.findByIds(stockIds).associateBy { it.id }
         val badgeMap = riskBadgeDao.findByStockIds(stockIds).associateBy { it.stockId }
-        val priceMap = priceDao.findTop2PerStock(stockIds, portfolio.marketGroup).groupBy { it.stockId }
+        val priceMap = priceDao.findTop2PerStock(stockIds, MarketGroup.valueOf(portfolio.marketGroup))
+            .groupBy { it.stockId }
 
         var totalCost = BigDecimal.ZERO
         var totalValue = BigDecimal.ZERO

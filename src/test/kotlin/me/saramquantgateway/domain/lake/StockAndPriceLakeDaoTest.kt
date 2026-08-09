@@ -1,6 +1,7 @@
 package me.saramquantgateway.domain.lake
 
 import me.saramquantgateway.domain.enum.market.Benchmark
+import me.saramquantgateway.domain.enum.portfolio.MarketGroup
 import me.saramquantgateway.domain.enum.stock.Market
 import me.saramquantgateway.support.LakeFixture
 import org.junit.jupiter.api.AfterAll
@@ -97,7 +98,7 @@ class StockAndPriceLakeDaoTest {
 
     @Test
     fun `findTop2PerStock returns at most two rows per stock and tolerates a single row stock`() {
-        val prices = priceDao.findTop2PerStock(listOf(1L, 3L), "KR")
+        val prices = priceDao.findTop2PerStock(listOf(1L, 3L), MarketGroup.KR)
 
         assertEquals(2, prices.count { it.stockId == 1L })
         assertEquals(1, prices.count { it.stockId == 3L })
@@ -106,7 +107,7 @@ class StockAndPriceLakeDaoTest {
 
     @Test
     fun `findTop2PerStock excludes stocks from another market group`() {
-        val prices = priceDao.findTop2PerStock(listOf(1L, 4L), "US")
+        val prices = priceDao.findTop2PerStock(listOf(1L, 4L), MarketGroup.US)
 
         assertEquals(listOf(4L), prices.map { it.stockId }.distinct())
     }

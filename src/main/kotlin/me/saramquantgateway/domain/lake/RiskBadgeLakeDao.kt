@@ -40,6 +40,7 @@ class RiskBadgeLakeDao(
         page: Int,
         size: Int,
     ): PageResult<RiskBadge> {
+        if (summaryTiers.isEmpty()) return PageResult(emptyList(), 0, false)
         val where = "WHERE market = ? AND summary_tier IN (${placeholders(summaryTiers.size)})"
         val params = listOf<Any>(market.name) + summaryTiers
 

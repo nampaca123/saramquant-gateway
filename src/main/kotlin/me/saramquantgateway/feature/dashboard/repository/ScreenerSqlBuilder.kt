@@ -85,7 +85,7 @@ internal class ScreenerSqlBuilder(private val filter: ScreenerFilter) {
     private companion object {
         val ALL_MARKET_GROUPS = listOf("KR", "US")
 
-        // base CTE의 출력 컬럼명 기준 정렬식
+        // base CTE의 출력 컬럼명 기준 정렬식 — id 타이브레이크로 페이지 경계를 안정화한다.
         val SORT_MAP = mapOf(
             "name_asc" to "name ASC",
             "name_desc" to "name DESC",
@@ -107,6 +107,6 @@ internal class ScreenerSqlBuilder(private val filter: ScreenerFilter) {
             "roe_desc" to "roe DESC NULLS LAST",
             "debt_ratio_asc" to "debt_ratio ASC NULLS LAST",
             "debt_ratio_desc" to "debt_ratio DESC NULLS LAST",
-        )
+        ).mapValues { (_, order) -> "$order, id" }
     }
 }

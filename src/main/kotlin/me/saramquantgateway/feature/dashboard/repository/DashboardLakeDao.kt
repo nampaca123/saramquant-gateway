@@ -2,6 +2,7 @@ package me.saramquantgateway.feature.dashboard.repository
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import me.saramquantgateway.domain.enum.stock.Market
+import me.saramquantgateway.domain.lake.recentDatesFrom
 import me.saramquantgateway.feature.dashboard.dto.DashboardPage
 import me.saramquantgateway.feature.dashboard.dto.DashboardStockItem
 import me.saramquantgateway.feature.dashboard.dto.DataFreshnessResponse
@@ -14,7 +15,9 @@ import org.springframework.stereotype.Repository
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.sql.ResultSet
-import java.time.LocalDate
+import java.time.Instant
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 
 @Repository
 class DashboardLakeDao(
@@ -24,26 +27,24 @@ class DashboardLakeDao(
     private val objectMapper: ObjectMapper,
 ) {
 
+    // count와 페이지를 두 번 스캔하지 않도록 윈도우 집계로 총건수를 같이 뽑는다.
     fun search(filter: ScreenerFilter): DashboardPage {
         val builder = ScreenerSqlBuilder(filter)
         val (whereSql, whereParams) = builder.build()
         val groups = builder.marketGroups()
-        val lookback = LocalDate.now().minusDays(LOOKBACK_DAYS)
-        val cteParams = listOf<Any>(lookback) + groups + listOf(lookback)
+        val cteParams = groups + groups
         val baseSql = baseSql(groups) + "\n" + whereSql + "\n)"
 
-        val total = executor.query(
-            "$baseSql SELECT count(*) AS c FROM base",
-            cteParams + whereParams,
-        ) { it.getLong("c") }.single()
-        if (total == 0L) return emptyPage(filter)
-
         val offset = filter.page.toLong() * filter.size
-        val items = executor.query(
-            "$baseSql SELECT * FROM base ORDER BY ${builder.orderBy()} LIMIT ? OFFSET ?",
+        val rows = executor.query(
+            "$baseSql SELECT *, count(*) OVER () AS total_count FROM base " +
+                "ORDER BY ${builder.orderBy()} LIMIT ? OFFSET ?",
             cteParams + whereParams + listOf(filter.size, offset),
-            ::mapItem,
-        )
+        ) { it.getLong("total_count") to mapItem(it) }
+
+        val total = rows.firstOrNull()?.first ?: countMatches(baseSql, cteParams + whereParams)
+        if (total == 0L) return emptyPage(filter)
+        val items = rows.map { it.second }
 
         val totalPages = ((total + filter.size - 1) / filter.size).toInt()
         return DashboardPage(
@@ -91,32 +92,49 @@ class DashboardLakeDao(
         }
     }
 
-    // 배치 run-summary가 데이터 신선도의 단일 출처다(가격/재무 구분 없이 런 단위).
-    fun dataFreshness(): DataFreshnessResponse {
-        val kr = runSummaryReader.writtenAtUtc("calc_kr")
-        val us = runSummaryReader.writtenAtUtc("calc_us")
-        return DataFreshnessResponse(
-            krPriceUpdatedAt = kr,
-            usPriceUpdatedAt = us,
-            krFinancialUpdatedAt = kr,
-            usFinancialUpdatedAt = us,
-        )
-    }
+    // 가격은 calc_kr/calc_us, 재무는 분기 배치인 calc_*-fs 런 요약을 각각 출처로 쓴다.
+    fun dataFreshness(): DataFreshnessResponse = DataFreshnessResponse(
+        krPriceUpdatedAt = runTimestamp("calc_kr"),
+        usPriceUpdatedAt = runTimestamp("calc_us"),
+        krFinancialUpdatedAt = runTimestamp("calc_kr-fs") ?: runTimestamp("calc_kr"),
+        usFinancialUpdatedAt = runTimestamp("calc_us-fs") ?: runTimestamp("calc_us"),
+    )
 
-    private fun baseSql(groups: List<String>): String = """
+    private fun countMatches(baseSql: String, params: List<Any>): Long =
+        executor.query("$baseSql SELECT count(*) AS c FROM base", params) { it.getLong("c") }.single()
+
+    // 마이그레이션 이전 Postgres timestamptz::text 표기(2026-08-09 12:00:00+00)를 그대로 유지한다.
+    private fun runTimestamp(command: String): String? =
+        runSummaryReader.writtenAtUtc(command)?.let { raw ->
+            runCatching { PG_TIMESTAMP_FMT.format(Instant.parse(raw)) }.getOrDefault(raw)
+        }
+
+    private fun baseSql(groups: List<String>): String {
+        val priceRef = resolver.ref("daily_prices")
+        val fundamentalRef = resolver.ref("stock_fundamentals")
+        val groupPlaceholders = groups.joinToString(", ") { "?" }
+        return """
         WITH sf AS (
             SELECT stock_id, per, pbr, roe, debt_ratio FROM (
                 SELECT stock_id, per, pbr, roe, debt_ratio,
                        row_number() OVER (PARTITION BY stock_id ORDER BY date DESC) AS rn
-                FROM ${resolver.ref("stock_fundamentals")} WHERE date >= ?
+                FROM $fundamentalRef WHERE date >= ${recentDatesFrom(fundamentalRef)}
+            ) t WHERE rn = 1
+        ),
+        si AS (
+            SELECT stock_id, beta, rsi_14, sharpe, atr_14, adx_14 FROM (
+                SELECT stock_id, beta, rsi_14, sharpe, atr_14, adx_14,
+                       row_number() OVER (PARTITION BY stock_id ORDER BY date DESC) AS rn
+                FROM ${resolver.ref("stock_indicators")}
             ) t WHERE rn = 1
         ),
         dp AS (
             SELECT stock_id, close, date, rn FROM (
                 SELECT stock_id, close, date,
                        row_number() OVER (PARTITION BY stock_id ORDER BY date DESC) AS rn
-                FROM ${resolver.ref("daily_prices")}
-                WHERE market IN (${groups.joinToString(", ") { "?" }}) AND date >= ?
+                FROM $priceRef
+                WHERE market IN ($groupPlaceholders)
+                  AND date >= ${recentDatesFrom(priceRef, " WHERE market IN ($groupPlaceholders)")}
             ) t WHERE rn <= 2
         ),
         base AS (
@@ -127,11 +145,12 @@ class DashboardLakeDao(
                    cur.close AS latest_close, prv.close AS prev_close, prv.date AS compared_date
             FROM ${resolver.ref("stocks")} s
             LEFT JOIN ${resolver.ref("risk_badges")} rb ON rb.stock_id = s.id
-            LEFT JOIN ${resolver.ref("stock_indicators")} si ON si.stock_id = s.id
+            LEFT JOIN si ON si.stock_id = s.id
             LEFT JOIN sf ON sf.stock_id = s.id
             LEFT JOIN dp cur ON cur.stock_id = s.id AND cur.rn = 1
             LEFT JOIN dp prv ON prv.stock_id = s.id AND prv.rn = 2
-    """.trimIndent()
+        """.trimIndent()
+    }
 
     private fun mapItem(rs: ResultSet): DashboardStockItem {
         val latestClose = rs.getBigDecimal("latest_close")
@@ -185,6 +204,7 @@ class DashboardLakeDao(
     )
 
     private companion object {
-        const val LOOKBACK_DAYS = 90L
+        val PG_TIMESTAMP_FMT: DateTimeFormatter =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss'+00'").withZone(ZoneOffset.UTC)
     }
 }

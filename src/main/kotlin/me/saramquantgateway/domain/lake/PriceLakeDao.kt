@@ -3,6 +3,7 @@ package me.saramquantgateway.domain.lake
 import me.saramquantgateway.domain.entity.market.BenchmarkDailyPrice
 import me.saramquantgateway.domain.entity.stock.DailyPrice
 import me.saramquantgateway.domain.enum.market.Benchmark
+import me.saramquantgateway.domain.enum.portfolio.MarketGroup
 import me.saramquantgateway.domain.enum.stock.Market
 import me.saramquantgateway.infra.duckdb.DuckDbQueryExecutor
 import me.saramquantgateway.infra.duckdb.LakeTableResolver
@@ -27,32 +28,34 @@ class PriceLakeDao(
         WHERE market = ? AND stock_id = ? AND date BETWEEN ? AND ?
         ORDER BY date DESC
         """.trimIndent(),
-        listOf(marketGroupOf(market), stockId, startDate, endDate),
+        listOf(marketGroupOf(market).name, stockId, startDate, endDate),
         ::mapDailyPrice,
     )
 
     fun findTop2ByStockId(stockId: Long, market: Market): List<DailyPrice> = executor.query(
         """
         SELECT $PRICE_COLUMNS FROM ${dailyRef()}
-        WHERE market = ? AND stock_id = ? AND date >= ?
+        WHERE market = ? AND stock_id = ?
         ORDER BY date DESC LIMIT 2
         """.trimIndent(),
-        listOf(marketGroupOf(market), stockId, latestLookbackFrom()),
+        listOf(marketGroupOf(market).name, stockId),
         ::mapDailyPrice,
     )
 
-    fun findTop2PerStock(stockIds: List<Long>, marketGroup: String): List<DailyPrice> {
+    fun findTop2PerStock(stockIds: List<Long>, marketGroup: MarketGroup): List<DailyPrice> {
         if (stockIds.isEmpty()) return emptyList()
+        val ref = dailyRef()
         return executor.query(
             """
             SELECT $PRICE_COLUMNS FROM (
                 SELECT stock_id, date, open, high, low, close, volume,
                        row_number() OVER (PARTITION BY stock_id ORDER BY date DESC) AS rn
-                FROM ${dailyRef()}
-                WHERE market = ? AND date >= ? AND stock_id IN (${placeholders(stockIds.size)})
+                FROM $ref
+                WHERE market = ? AND stock_id IN (${placeholders(stockIds.size)})
+                  AND date >= ${recentDatesFrom(ref, " WHERE market = ?")}
             ) t WHERE rn <= 2
             """.trimIndent(),
-            listOf(marketGroup, latestLookbackFrom()) + stockIds,
+            listOf<Any>(marketGroup.name) + stockIds + listOf(marketGroup.name),
             ::mapDailyPrice,
         )
     }

@@ -6,7 +6,7 @@ import me.saramquantgateway.infra.duckdb.LakeTableResolver
 import org.springframework.stereotype.Component
 import java.sql.ResultSet
 
-// stock_indicators는 최신 스냅샷만 유지되는 테이블이라 날짜 프루닝이 필요 없다.
+// stock_indicators는 스냅샷 테이블이지만 재적재 중복에 대비해 종목별 최신 1행만 취한다.
 @Component
 class IndicatorLakeDao(
     private val executor: DuckDbQueryExecutor,
@@ -22,7 +22,12 @@ class IndicatorLakeDao(
     fun findLatestByStockIds(stockIds: List<Long>): List<StockIndicator> {
         if (stockIds.isEmpty()) return emptyList()
         return executor.query(
-            "SELECT $COLUMNS FROM ${ref()} WHERE stock_id IN (${placeholders(stockIds.size)})",
+            """
+            SELECT $COLUMNS FROM (
+                SELECT $COLUMNS, row_number() OVER (PARTITION BY stock_id ORDER BY date DESC) AS rn
+                FROM ${ref()} WHERE stock_id IN (${placeholders(stockIds.size)})
+            ) t WHERE rn = 1
+            """.trimIndent(),
             stockIds,
             ::mapIndicator,
         )

@@ -17,24 +17,25 @@ class FactorLakeDao(
     fun findLatestByStockId(stockId: Long): FactorExposure? = executor.query(
         """
         SELECT $EXPOSURE_COLUMNS FROM ${exposureRef()}
-        WHERE stock_id = ? AND date >= ? ORDER BY date DESC LIMIT 1
+        WHERE stock_id = ? ORDER BY date DESC LIMIT 1
         """.trimIndent(),
-        listOf(stockId, latestLookbackFrom()),
+        listOf(stockId),
         ::mapExposure,
     ).firstOrNull()
 
     fun findLatestByStockIds(stockIds: List<Long>): List<FactorExposure> {
         if (stockIds.isEmpty()) return emptyList()
+        val ref = exposureRef()
         return executor.query(
             """
             SELECT $EXPOSURE_COLUMNS FROM (
                 SELECT stock_id, date, size_z, value_z, momentum_z, volatility_z, quality_z, leverage_z,
                        row_number() OVER (PARTITION BY stock_id ORDER BY date DESC) AS rn
-                FROM ${exposureRef()}
-                WHERE date >= ? AND stock_id IN (${placeholders(stockIds.size)})
+                FROM $ref
+                WHERE date >= ${recentDatesFrom(ref)} AND stock_id IN (${placeholders(stockIds.size)})
             ) t WHERE rn = 1
             """.trimIndent(),
-            listOf(latestLookbackFrom()) + stockIds,
+            stockIds,
             ::mapExposure,
         )
     }
