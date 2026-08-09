@@ -14,11 +14,11 @@ data class ProfileResponse(
     val preferredMarkets: Set<Market>,
 ) {
     companion object {
-        fun from(p: UserDoc) = ProfileResponse(
+        fun from(p: UserDoc, profileImageUrl: String?) = ProfileResponse(
             nickname = p.nickname,
             birthYear = p.birthYear,
             gender = p.gender,
-            profileImageUrl = p.profileImageKey,
+            profileImageUrl = profileImageUrl,
             investmentExperience = p.investmentExperience,
             preferredMarkets = p.preferredMarkets,
         )

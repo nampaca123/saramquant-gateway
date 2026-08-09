@@ -14,6 +14,7 @@ import software.amazon.awssdk.services.s3.model.DeleteObjectsRequest
 import software.amazon.awssdk.services.s3.model.GetObjectRequest
 import software.amazon.awssdk.services.s3.model.ListObjectsV2Request
 import software.amazon.awssdk.services.s3.model.ObjectIdentifier
+import software.amazon.awssdk.services.s3.presigner.S3Presigner
 import java.util.UUID
 
 // 스토어 통합 테스트용 S3 클라이언트/프리픽스 헬퍼 (app-test/ 하위만 사용).
@@ -26,14 +27,17 @@ object S3TestSupport {
 
     fun newClient(): S3Client = S3Client.builder()
         .region(Region.of(REGION))
-        .credentialsProvider(
-            StaticCredentialsProvider.create(
-                AwsBasicCredentials.create(
-                    System.getenv("SARAMQUANT_IAM_KEY_ACCESS"),
-                    System.getenv("SARAMQUANT_IAM_KEY_SECRET"),
-                ),
-            ),
-        )
+        .credentialsProvider(StaticCredentialsProvider.create(credentials()))
+        .build()
+
+    private fun credentials(): AwsBasicCredentials = AwsBasicCredentials.create(
+        System.getenv("SARAMQUANT_IAM_KEY_ACCESS"),
+        System.getenv("SARAMQUANT_IAM_KEY_SECRET"),
+    )
+
+    fun newPresigner(): S3Presigner = S3Presigner.builder()
+        .region(Region.of(REGION))
+        .credentialsProvider(StaticCredentialsProvider.create(credentials()))
         .build()
 
     fun newKvStore(s3: S3Client, prefix: String): S3KvStore {

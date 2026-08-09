@@ -59,8 +59,8 @@ class AuthService(
         } else {
             user = userService.createOAuthUser(userInfo, provider)
             userInfo.imageUrl?.let { url ->
-                val bucketUrl = profileImageService.uploadFromUrl(user.id, url)
-                bucketUrl?.let { profileService.updateImageUrl(user.id, it) }
+                val imageKey = profileImageService.uploadFromUrl(user.id, url)
+                imageKey?.let { profileService.updateImageKey(user.id, it) }
             }
             systemEmailService.sendWelcomeEmail(user)
         }

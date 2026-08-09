@@ -2,6 +2,7 @@ package me.saramquantgateway.infra.user.service
 
 import me.saramquantgateway.domain.document.UserDoc
 import me.saramquantgateway.domain.store.UserStore
+import me.saramquantgateway.infra.storage.service.ProfileImageService
 import me.saramquantgateway.infra.user.dto.ProfileResponse
 import me.saramquantgateway.infra.user.dto.ProfileUpdateRequest
 import org.springframework.stereotype.Service
@@ -9,10 +10,13 @@ import java.time.Instant
 import java.util.UUID
 
 @Service
-class ProfileService(private val userStore: UserStore) {
+class ProfileService(
+    private val userStore: UserStore,
+    private val profileImageService: ProfileImageService,
+) {
 
     fun getByUserId(userId: UUID): ProfileResponse? =
-        userStore.findById(userId)?.let { ProfileResponse.from(it) }
+        userStore.findById(userId)?.let { toResponse(it) }
 
     fun update(userId: UUID, req: ProfileUpdateRequest): ProfileResponse {
         val user = userStore.findById(userId)
@@ -28,22 +32,26 @@ class ProfileService(private val userStore: UserStore) {
         }
 
         persist(user)
-        return ProfileResponse.from(user)
+        return toResponse(user)
     }
 
-    fun updateImageUrl(userId: UUID, url: String) {
+    fun updateImageKey(userId: UUID, key: String) {
         userStore.findById(userId)?.let {
-            it.profileImageKey = url
+            it.profileImageKey = key
             persist(it)
         }
     }
 
-    fun clearImageUrl(userId: UUID) {
+    fun clearImageKey(userId: UUID) {
         userStore.findById(userId)?.let {
             it.profileImageKey = null
             persist(it)
         }
     }
+
+    // 저장은 S3 키로, 응답은 presigned URL로 나간다.
+    private fun toResponse(user: UserDoc): ProfileResponse =
+        ProfileResponse.from(user, user.profileImageKey?.let { profileImageService.presignedUrl(it) })
 
     private fun persist(user: UserDoc) {
         user.updatedAt = Instant.now()

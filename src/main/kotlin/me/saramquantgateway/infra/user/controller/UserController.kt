@@ -54,16 +54,16 @@ class UserController(
     ): ResponseEntity<Map<String, String>> {
         val userId = UUID.fromString(principal.name)
         val contentType = file.contentType ?: "image/jpeg"
-        val url = profileImageService.uploadFromBytes(userId, file.bytes, contentType)
-        profileService.updateImageUrl(userId, url)
-        return ResponseEntity.ok(mapOf("profileImageUrl" to url))
+        val key = profileImageService.uploadFromBytes(userId, file.bytes, contentType)
+        profileService.updateImageKey(userId, key)
+        return ResponseEntity.ok(mapOf("profileImageUrl" to profileImageService.presignedUrl(key)))
     }
 
     @DeleteMapping("/profile/image")
     fun deleteProfileImage(principal: Principal): ResponseEntity<Void> {
         val userId = UUID.fromString(principal.name)
         profileImageService.delete(userId)
-        profileService.clearImageUrl(userId)
+        profileService.clearImageKey(userId)
         return ResponseEntity.noContent().build()
     }
 
