@@ -2,13 +2,16 @@
 
 Supabase(PostgreSQL)/Railway 기반 gateway를 S3+DuckDB+AWS(ECS on EC2) 기반으로 전환한다.
 선례: `C:\Users\a\Desktop\CodeWork\work\ontology-for-nabus-adtrigger` (코드베이스 우선, 문서는 참고만).
+**레이크하우스 스키마·파티셔닝·서비스 계약의 단일 기준은 calc-server 스펙**
+(`saramquant-calc-server/docs/superpowers/specs/2026-08-09-aws-migration-design.md`)의 §2·§8이며,
+본 문서는 그 계약을 소비하는 쪽으로 정합을 맞춘다.
 
 ## 0. 확정 결정 사항
 
 | 항목 | 결정 |
 |---|---|
 | 트랜잭셔널 데이터 | S3 KV — 엔티티별 JSON 객체 (`app/` 프리픽스), 조건부 쓰기로 생성 경합 방어 |
-| 시장 데이터 조회 | gateway에 DuckDB JDBC 내장, `lake/` Iceberg 직접 읽기 |
+| 시장 데이터 조회 | gateway에 DuckDB JDBC 내장, `warehouse/` Iceberg 직접 읽기 (Glue metadata_location 경유) |
 | 컴퓨트/노출 | ECS on EC2 t4g.small ×1 (온디맨드) + EIP + caddy 사이드카 TLS. ALB 없음 |
 | DNS/웹 | NameCheap DNS (A레코드 → EIP), 프론트는 Vercel 유지. 설정 가이드를 docs/에 별도 작성 |
 | 런타임 자격증명 | EC2 인스턴스 롤 (로컬/CI는 SARAMQUANT_IAM 키만) |
@@ -29,9 +32,10 @@ Supabase(PostgreSQL)/Railway 기반 gateway를 S3+DuckDB+AWS(ECS on EC2) 기반�
                     └─────────────────────────────┘
                               │ EC2 인스턴스 롤
                     s3://saramquant-bucket
-                    ├── lake/      (Iceberg — calc 세션이 쓰기, gateway는 RO)
-                    ├── app/       (트랜잭셔널 KV JSON — gateway 전용 RW)
-                    └── _tf-state/ (Terraform 상태)
+                    ├── warehouse/<table>/   (Iceberg — calc/fstatements가 쓰기, gateway는 RO)
+                    ├── run-summary/         (배치 런 레코드 — freshness 판단용, RO)
+                    └── app/                 (트랜잭셔널 KV JSON — gateway 전용 RW)
+                    Glue DB `saramquant` (Iceberg 카탈로그, RO)
 ```
 
 - VPC: 퍼블릭 서브넷만, NAT 없음, S3 게이트웨이 엔드포인트 부착 (비용 0 구조).
@@ -43,18 +47,37 @@ Supabase(PostgreSQL)/Railway 기반 gateway를 S3+DuckDB+AWS(ECS on EC2) 기반�
 - `org.duckdb:duckdb_jdbc` 추가. httpfs·iceberg 확장은 Docker 빌드 시 설치·로드 검증,
   런타임은 `autoinstall/autoload=false` + `extension_directory` 오프라인 로드 (선례 패턴).
 - DuckDB secret은 `credential_chain` → 인스턴스 롤 자동 인식. 커넥션은 전역 1개 재사용.
+- 읽기 경로는 calc 스펙 §2.1 규약 준수: Glue `GetTable`(AWS SDK) → `Parameters["metadata_location"]` →
+  `iceberg_scan()`. **Parquet 경로 직접 글롭 금지.** metadata_location은 짧은 TTL로 캐시.
 - JPA 읽기 대상이던 시장 테이블을 DuckDB SQL로 재작성:
   `stocks, daily_prices, benchmark_daily_prices, stock_indicators, stock_fundamentals,
   factor_exposures, factor_covariance, sector_aggregates, risk_badges, exchange_rates, risk_free_rates`
-- 기존 Caffeine 캐시 유지. `data-freshness`는 `lake/_meta/freshness.json` 읽기로 대체.
+- 팩트 테이블 surrogate id 제거·`market` 컬럼 추가·stock_id(long) 조인 키 등 스키마 세부는 calc 스펙
+  §2.2–2.3을 그대로 따른다 (쿼리 재작성 시 symbol → stocks 조인으로 stock_id 해석).
+- 기존 Caffeine 캐시 유지. `data-freshness`는 `run-summary/calc_kr.json`·`calc_us.json`의
+  `written_at_utc`/`status` 읽기로 대체 (calc 스펙 §6.1 포맷).
 
-### 파티셔닝 읽기 계약 (calc 세션에 전달, `docs/temp/lake-read-contract.md`)
+### 파티셔닝
 
-- `daily_prices`, `benchmark_daily_prices`: `months(date)` 파티션 + symbol 로컬 정렬.
-- 스냅샷성 테이블(stocks, indicators, fundamentals, badges, sector_aggregates 등): 무파티션.
-- 파티션 프로젝션은 Iceberg에 해당 없음(Hive 테이블용 Athena 기능) — Iceberg는 매니페스트 기반 프루닝.
-- TBLPROPERTIES 권고: `write.parquet.compression-codec=zstd`(명시 필수, 기본값이 gzip),
-  `write.target-file-size-bytes=268435456`.
+calc 스펙 §2.3이 확정 기준 (daily_prices: `market`+`months(date)`, financial_statements: `market`,
+fundamentals/factor_*: `months(date)`, 나머지 무파티션 + 파일 내 정렬). gateway는 소비만 하므로
+별도 계약 문서를 만들지 않고, 쿼리가 파티션 프루닝을 타도록 `market`·`date` 필터를 명시적으로 건다.
+파티션 프로젝션은 Hive 전용 개념으로 Iceberg에 해당 없음(양쪽 스펙 합의 완료).
+
+### calc API 계약 변경 반영 (calc 스펙 §8.1)
+
+gateway가 호출하는 calc 엔드포인트는 4개뿐임을 코드로 확인 (`CalcServerClient` 사용처 전수).
+
+| 호출부 | 기존 | 신규 |
+|---|---|---|
+| PortfolioController·PortfolioLlmService | `POST /internal/portfolios/full-analysis` (portfolio_id 전달) | 동일 경로, **바디에 `{market_group, holdings[]}` 전달** |
+| SimulationService | `POST /internal/portfolios/{id}/simulation` | `POST /internal/portfolios/simulation` + holdings 바디 |
+| SimulationService | `GET /internal/stocks/{symbol}/simulation` | 불변 |
+| PortfolioService | `POST /internal/portfolios/price-lookup` | 불변 (환율 write-back 제거는 calc 내부 사안) |
+
+`CALC_SERVER_URL`은 신규 API Gateway URL로 교체(변수명 유지), `x-api-key: CALC_AUTH_KEY` 유지.
+holdings 배열은 gateway가 자기 `portfolios/{userId}.json`에서 구성해 전달 — calc는 더 이상 사용자
+데이터에 접근하지 않는다.
 
 ## 3. 트랜잭셔널 데이터 — S3 KV (`app/`)
 
@@ -85,15 +108,17 @@ Supabase(PostgreSQL)/Railway 기반 gateway를 S3+DuckDB+AWS(ECS on EC2) 기반�
 
 ## 5. IaC & CI/CD
 
-- `infra/` Terraform 단일 환경. 백엔드 `s3://saramquant-bucket/_tf-state/gateway.tfstate`,
-  `use_lockfile=true`. `default_tags { project = "saramquant" }`.
+- `infra/` Terraform 단일 환경. 백엔드는 공유 상태 버킷 `s3://saramquant-tfstate`,
+  key `gateway/terraform.tfstate`, `use_lockfile=true` (calc 스펙 §2.1 합의. 버킷 부트스트랩은
+  최초 1회 — calc 세션이 먼저 만들었으면 재사용). `default_tags { project = "saramquant" }`.
 - 로컬은 `make check`(fmt/validate)만. plan/apply는 CI 전용.
 - `deploy.yml` (push to main): gradle 빌드·테스트 → JAR → arm64 이미지 buildx(콘텐츠 해시 태그,
   동일 태그 존재 시 빌드 스킵) → ECR push → terraform plan/apply.
   인증: `SARAMQUANT_IAM_KEY_ACCESS/SECRET` 시크릿 (OIDC 아님). concurrency 그룹 직렬화.
 - 시크릿 전달: GH secrets → Terraform → SSM SecureString → taskdef `secrets` 참조.
 - Terraform 관리: VPC/SG, EIP, ASG(×1, ECS ARM AMI), ECS 클러스터/서비스/태스크(gateway+caddy),
-  ECR(최근 3개 보존), 인스턴스 롤(`app/*` RW, `lake/*` RO, SSM RO), CloudWatch 로그 그룹(30일).
+  ECR(최근 3개 보존), 인스턴스 롤(`app/*` RW, `warehouse/*`·`run-summary/*` RO, Glue `saramquant`
+  DB GetTable RO, SSM RO), CloudWatch 로그 그룹(30일).
 - `saramquant-bucket` 자체는 이미 존재 → data source 참조. 버킷 정책/수명주기는 건드리지 않음.
 
 ## 6. 로깅
@@ -108,9 +133,9 @@ Supabase(PostgreSQL)/Railway 기반 gateway를 S3+DuckDB+AWS(ECS on EC2) 기반�
 - 태스크 게이트: 로컬 테스트 통과 + 로컬 서버 기동 검증 후 커밋.
 - PR 게이트(1회): 전체 diff 코드리뷰 → 배포 환경 curl 검증 → verification → 브랜치 정리.
 - **완주 기준**: `https://api.saramquant.com`에 대해 가입→메일 인증→로그인→포트폴리오 CRUD→
-  로그아웃 curl 성공. 대시보드/종목 상세는 calc 세션의 lake 적재에 의존 — 적재 전엔 계약 기준
-  샘플 데이터로 검증, 적재 후 실데이터 최종 확인.
-- 세션 간 조율 문서: `docs/temp/aws-migration-status.md`, `docs/temp/lake-read-contract.md`.
+  로그아웃 curl 성공. 대시보드/종목 상세는 calc 세션의 warehouse 적재에 의존 — 적재 전엔 calc 스펙
+  §2.3 스키마 기준 샘플 데이터로 검증, 적재 후 실데이터 최종 확인.
+- 세션 간 조율: 진행 현황은 `docs/temp/aws-migration-status.md`, 스키마·계약 기준은 calc 스펙 §2·§8.
 
 ## 8. 사용자 액션 필요
 
