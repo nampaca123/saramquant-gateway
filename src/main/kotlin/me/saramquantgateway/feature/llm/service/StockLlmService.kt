@@ -6,15 +6,14 @@ import me.saramquantgateway.domain.enum.fundamental.ReportType
 import me.saramquantgateway.domain.enum.market.Country
 import me.saramquantgateway.domain.enum.market.Maturity
 import me.saramquantgateway.domain.enum.stock.Market
-import me.saramquantgateway.domain.repository.factor.FactorExposureRepository
-import me.saramquantgateway.domain.repository.fundamental.FinancialStatementRepository
-import me.saramquantgateway.domain.repository.fundamental.StockFundamentalRepository
-import me.saramquantgateway.domain.repository.indicator.StockIndicatorRepository
-import me.saramquantgateway.domain.repository.market.RiskFreeRateRepository
-import me.saramquantgateway.domain.repository.market.SectorAggregateRepository
-import me.saramquantgateway.domain.repository.riskbadge.RiskBadgeRepository
-import me.saramquantgateway.domain.repository.stock.DailyPriceRepository
-import me.saramquantgateway.domain.repository.stock.StockRepository
+import me.saramquantgateway.domain.lake.FactorLakeDao
+import me.saramquantgateway.domain.lake.FundamentalLakeDao
+import me.saramquantgateway.domain.lake.IndicatorLakeDao
+import me.saramquantgateway.domain.lake.MarketRefLakeDao
+import me.saramquantgateway.domain.lake.PriceLakeDao
+import me.saramquantgateway.domain.lake.RiskBadgeLakeDao
+import me.saramquantgateway.domain.lake.SectorLakeDao
+import me.saramquantgateway.domain.lake.StockLakeDao
 import me.saramquantgateway.domain.document.LlmAnalysisDoc
 import me.saramquantgateway.domain.store.LlmCacheStore
 import me.saramquantgateway.feature.llm.dto.LlmAnalysisResponse
@@ -36,15 +35,14 @@ import java.util.concurrent.TimeUnit
 @Service
 class StockLlmService(
     private val cacheStore: LlmCacheStore,
-    private val stockRepo: StockRepository,
-    private val priceRepo: DailyPriceRepository,
-    private val indicatorRepo: StockIndicatorRepository,
-    private val fundamentalRepo: StockFundamentalRepository,
-    private val financialRepo: FinancialStatementRepository,
-    private val badgeRepo: RiskBadgeRepository,
-    private val sectorAggRepo: SectorAggregateRepository,
-    private val factorRepo: FactorExposureRepository,
-    private val riskFreeRateRepo: RiskFreeRateRepository,
+    private val stockDao: StockLakeDao,
+    private val priceDao: PriceLakeDao,
+    private val indicatorDao: IndicatorLakeDao,
+    private val fundamentalDao: FundamentalLakeDao,
+    private val badgeDao: RiskBadgeLakeDao,
+    private val sectorAggDao: SectorLakeDao,
+    private val factorDao: FactorLakeDao,
+    private val marketRefDao: MarketRefLakeDao,
     private val promptBuilder: PromptBuilder,
     private val llmRouter: LlmRouter,
     private val props: LlmProperties,
@@ -53,14 +51,14 @@ class StockLlmService(
     private val inFlight = ConcurrentHashMap<String, CompletableFuture<String>>()
 
     fun getCached(symbol: String, market: Market, preset: String, lang: String): LlmAnalysisResponse? {
-        val stock = stockRepo.findBySymbolAndMarketAndIsActiveTrue(symbol, market) ?: return null
+        val stock = stockDao.findBySymbolAndMarket(symbol, market) ?: return null
         val cached = cacheStore.findStock(stock.id, LocalDate.now(), preset, lang)
             ?: return null
         return toResponse(cached, true)
     }
 
     fun analyze(symbol: String, market: Market, preset: String, lang: String): LlmAnalysisResponse {
-        val stock = stockRepo.findBySymbolAndMarketAndIsActiveTrue(symbol, market)
+        val stock = stockDao.findBySymbolAndMarket(symbol, market)
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Stock not found")
         val today = LocalDate.now()
 
@@ -98,7 +96,7 @@ class StockLlmService(
     private fun buildContextData(stock: Stock): StockContextData {
         val today = LocalDate.now()
         val yearAgo = today.minusYears(1)
-        val history = priceRepo.findByStockIdAndDateBetweenOrderByDateDesc(stock.id, yearAgo, today)
+        val history = priceDao.findByStockIdAndDateBetween(stock.id, stock.market, yearAgo, today)
         val latest = history.firstOrNull()
         val prev = history.getOrNull(1)
 
@@ -109,20 +107,20 @@ class StockLlmService(
         val week52High = history.maxOfOrNull { it.high }
         val week52Low = history.minOfOrNull { it.low }
 
-        val financials = financialRepo.findByStockIdOrderByFiscalYearDescReportTypeDesc(stock.id)
+        val financials = fundamentalDao.findFinancialsByStockId(stock.id, stock.market)
         val latestFY = financials.firstOrNull { it.reportType == ReportType.FY }
         val prevFY = financials.filter { it.reportType == ReportType.FY }.getOrNull(1)
 
         val marketCap = if (latest != null && latestFY?.sharesOutstanding != null)
             latest.close.multiply(BigDecimal(latestFY.sharesOutstanding)) else null
 
-        val indicator = indicatorRepo.findTop1ByStockIdOrderByDateDesc(stock.id)
-        val fundamental = fundamentalRepo.findTop1ByStockIdOrderByDateDesc(stock.id)
-        val badge = badgeRepo.findByStockId(stock.id)
-        val sectorAgg = stock.sector?.let { sectorAggRepo.findTop1ByMarketAndSectorOrderByDateDesc(stock.market, it) }
-        val factor = factorRepo.findTop1ByStockIdOrderByDateDesc(stock.id)
+        val indicator = indicatorDao.findLatestByStockId(stock.id)
+        val fundamental = fundamentalDao.findLatestByStockId(stock.id)
+        val badge = badgeDao.findByStockId(stock.id)
+        val sectorAgg = stock.sector?.let { sectorAggDao.findLatestByMarketAndSector(stock.market, it) }
+        val factor = factorDao.findLatestByStockId(stock.id)
         val country = Country.forMarket(stock.market)
-        val riskFreeRate = riskFreeRateRepo.findTop1ByCountryAndMaturityOrderByDateDesc(country, Maturity.Y1)?.rate
+        val riskFreeRate = marketRefDao.findLatestRiskFreeRate(country, Maturity.Y1)?.rate
 
         return StockContextData(
             name = stock.name,

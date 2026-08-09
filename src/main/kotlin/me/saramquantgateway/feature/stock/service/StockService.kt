@@ -4,14 +4,13 @@ import me.saramquantgateway.domain.enum.market.Benchmark
 import me.saramquantgateway.domain.enum.stock.Market
 import me.saramquantgateway.domain.enum.stock.PricePeriod
 import me.saramquantgateway.domain.store.LlmCacheStore
-import me.saramquantgateway.domain.repository.factor.FactorExposureRepository
-import me.saramquantgateway.domain.repository.fundamental.StockFundamentalRepository
-import me.saramquantgateway.domain.repository.indicator.StockIndicatorRepository
-import me.saramquantgateway.domain.repository.market.BenchmarkDailyPriceRepository
-import me.saramquantgateway.domain.repository.market.SectorAggregateRepository
-import me.saramquantgateway.domain.repository.riskbadge.RiskBadgeRepository
-import me.saramquantgateway.domain.repository.stock.DailyPriceRepository
-import me.saramquantgateway.domain.repository.stock.StockRepository
+import me.saramquantgateway.domain.lake.FactorLakeDao
+import me.saramquantgateway.domain.lake.FundamentalLakeDao
+import me.saramquantgateway.domain.lake.IndicatorLakeDao
+import me.saramquantgateway.domain.lake.PriceLakeDao
+import me.saramquantgateway.domain.lake.RiskBadgeLakeDao
+import me.saramquantgateway.domain.lake.SectorLakeDao
+import me.saramquantgateway.domain.lake.StockLakeDao
 import me.saramquantgateway.feature.stock.dto.*
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
@@ -22,22 +21,21 @@ import java.time.LocalDate
 
 @Service
 class StockService(
-    private val stockRepo: StockRepository,
-    private val dailyPriceRepo: DailyPriceRepository,
-    private val indicatorRepo: StockIndicatorRepository,
-    private val fundamentalRepo: StockFundamentalRepository,
-    private val riskBadgeRepo: RiskBadgeRepository,
-    private val sectorAggRepo: SectorAggregateRepository,
-    private val factorRepo: FactorExposureRepository,
+    private val stockDao: StockLakeDao,
+    private val priceDao: PriceLakeDao,
+    private val indicatorDao: IndicatorLakeDao,
+    private val fundamentalDao: FundamentalLakeDao,
+    private val riskBadgeDao: RiskBadgeLakeDao,
+    private val sectorAggDao: SectorLakeDao,
+    private val factorDao: FactorLakeDao,
     private val llmCacheStore: LlmCacheStore,
-    private val benchmarkPriceRepo: BenchmarkDailyPriceRepository,
 ) {
 
     fun getDetail(symbol: String, market: Market, lang: String): StockDetailResponse {
-        val stock = stockRepo.findBySymbolAndMarketAndIsActiveTrue(symbol, market)
+        val stock = stockDao.findBySymbolAndMarket(symbol, market)
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Stock not found")
 
-        val prices = dailyPriceRepo.findTop2ByStockIdOrderByDateDesc(stock.id)
+        val prices = priceDao.findTop2ByStockId(stock.id, market)
         val latest = prices.firstOrNull()
         val prev = prices.getOrNull(1)
 
@@ -48,11 +46,11 @@ class StockService(
                 .toDouble()
         else null
 
-        val indicator = indicatorRepo.findTop1ByStockIdOrderByDateDesc(stock.id)
-        val fundamental = fundamentalRepo.findTop1ByStockIdOrderByDateDesc(stock.id)
-        val badge = riskBadgeRepo.findByStockId(stock.id)
-        val sectorAgg = stock.sector?.let { sectorAggRepo.findTop1ByMarketAndSectorOrderByDateDesc(market, it) }
-        val factor = factorRepo.findTop1ByStockIdOrderByDateDesc(stock.id)
+        val indicator = indicatorDao.findLatestByStockId(stock.id)
+        val fundamental = fundamentalDao.findLatestByStockId(stock.id)
+        val badge = riskBadgeDao.findByStockId(stock.id)
+        val sectorAgg = stock.sector?.let { sectorAggDao.findLatestByMarketAndSector(market, it) }
+        val factor = factorDao.findLatestByStockId(stock.id)
         val llm = llmCacheStore.findStock(stock.id, LocalDate.now(), "summary", lang)
 
         return StockDetailResponse(
@@ -122,12 +120,12 @@ class StockService(
     }
 
     fun getPrices(symbol: String, market: Market, period: PricePeriod): PriceSeriesResponse {
-        val stock = stockRepo.findBySymbolAndMarketAndIsActiveTrue(symbol, market)
+        val stock = stockDao.findBySymbolAndMarket(symbol, market)
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Stock not found")
 
         val today = LocalDate.now()
         val from = today.minusDays(period.tradingDays * 7L / 5 + 10)
-        val all = dailyPriceRepo.findByStockIdAndDateBetweenOrderByDateDesc(stock.id, from, today)
+        val all = priceDao.findByStockIdAndDateBetween(stock.id, market, from, today)
         val trimmed = all.take(period.tradingDays).reversed()
 
         return PriceSeriesResponse(
@@ -156,16 +154,16 @@ class StockService(
     }
 
     fun getBenchmark(symbol: String, market: Market, period: PricePeriod): BenchmarkComparisonResponse {
-        val stock = stockRepo.findBySymbolAndMarketAndIsActiveTrue(symbol, market)
+        val stock = stockDao.findBySymbolAndMarket(symbol, market)
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Stock not found")
 
         val benchmark = Benchmark.forMarket(market)
         val today = LocalDate.now()
         val from = today.minusDays(period.tradingDays * 7L / 5 + 10)
 
-        val stockPrices = dailyPriceRepo.findByStockIdAndDateBetweenOrderByDateDesc(stock.id, from, today)
+        val stockPrices = priceDao.findByStockIdAndDateBetween(stock.id, market, from, today)
             .take(period.tradingDays).reversed()
-        val benchPrices = benchmarkPriceRepo.findByBenchmarkAndDateBetweenOrderByDateDesc(benchmark, from, today)
+        val benchPrices = priceDao.findBenchmarkByDateBetween(benchmark, from, today)
             .take(period.tradingDays).reversed()
 
         val stockByDate = stockPrices.associateBy { it.date }

@@ -3,9 +3,9 @@ package me.saramquantgateway.feature.portfolio.service
 import me.saramquantgateway.domain.document.HoldingEntry
 import me.saramquantgateway.domain.document.PortfolioDoc
 import me.saramquantgateway.domain.document.PortfolioEntry
-import me.saramquantgateway.domain.repository.riskbadge.RiskBadgeRepository
-import me.saramquantgateway.domain.repository.stock.DailyPriceRepository
-import me.saramquantgateway.domain.repository.stock.StockRepository
+import me.saramquantgateway.domain.lake.PriceLakeDao
+import me.saramquantgateway.domain.lake.RiskBadgeLakeDao
+import me.saramquantgateway.domain.lake.StockLakeDao
 import me.saramquantgateway.domain.store.PortfolioStore
 import me.saramquantgateway.feature.portfolio.dto.*
 import me.saramquantgateway.infra.connection.CalcServerClient
@@ -20,9 +20,9 @@ import java.util.UUID
 @Service
 class PortfolioService(
     private val portfolioStore: PortfolioStore,
-    private val stockRepo: StockRepository,
-    private val riskBadgeRepo: RiskBadgeRepository,
-    private val priceRepo: DailyPriceRepository,
+    private val stockDao: StockLakeDao,
+    private val riskBadgeDao: RiskBadgeLakeDao,
+    private val priceDao: PriceLakeDao,
     private val calcClient: CalcServerClient,
 ) {
 
@@ -37,9 +37,9 @@ class PortfolioService(
         }
 
         val stockIds = holdings.map { it.stockId }
-        val stockMap = stockRepo.findByIdIn(stockIds).associateBy { it.id }
-        val badgeMap = riskBadgeRepo.findByStockIdIn(stockIds).associateBy { it.stockId }
-        val priceMap = priceRepo.findTop2PerStockByStockIdIn(stockIds).groupBy { it.stockId }
+        val stockMap = stockDao.findByIds(stockIds).associateBy { it.id }
+        val badgeMap = riskBadgeDao.findByStockIds(stockIds).associateBy { it.stockId }
+        val priceMap = priceDao.findTop2PerStock(stockIds, portfolio.marketGroup).groupBy { it.stockId }
 
         var totalCost = BigDecimal.ZERO
         var totalValue = BigDecimal.ZERO
@@ -108,8 +108,8 @@ class PortfolioService(
     fun buy(portfolioId: Long, userId: UUID, req: BuyRequest): HoldingDetail {
         val (doc, portfolio) = loadOwned(portfolioId, userId)
 
-        val stock = stockRepo.findById(req.stockId)
-            .orElseThrow { ResponseStatusException(HttpStatus.NOT_FOUND, "Stock not found") }
+        val stock = stockDao.findById(req.stockId)
+            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Stock not found")
 
         val isKr = stock.market.isKorean
         if (isKr && portfolio.marketGroup != "KR")

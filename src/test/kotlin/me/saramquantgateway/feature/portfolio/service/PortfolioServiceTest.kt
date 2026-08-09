@@ -5,9 +5,9 @@ import me.saramquantgateway.domain.document.PortfolioDoc
 import me.saramquantgateway.domain.document.PortfolioEntry
 import me.saramquantgateway.domain.entity.stock.Stock
 import me.saramquantgateway.domain.enum.stock.Market
-import me.saramquantgateway.domain.repository.riskbadge.RiskBadgeRepository
-import me.saramquantgateway.domain.repository.stock.DailyPriceRepository
-import me.saramquantgateway.domain.repository.stock.StockRepository
+import me.saramquantgateway.domain.lake.PriceLakeDao
+import me.saramquantgateway.domain.lake.RiskBadgeLakeDao
+import me.saramquantgateway.domain.lake.StockLakeDao
 import me.saramquantgateway.domain.store.PortfolioStore
 import me.saramquantgateway.feature.portfolio.dto.BuyRequest
 import me.saramquantgateway.feature.portfolio.dto.SellRequest
@@ -23,7 +23,6 @@ import org.springframework.http.HttpStatus
 import org.springframework.web.server.ResponseStatusException
 import java.math.BigDecimal
 import java.time.LocalDate
-import java.util.Optional
 import java.util.UUID
 
 class PortfolioServiceTest {
@@ -33,20 +32,20 @@ class PortfolioServiceTest {
     private val usId: Long = PortfolioStore.portfolioIdOf(userId, "US")
 
     private lateinit var store: PortfolioStore
-    private lateinit var stockRepo: StockRepository
-    private lateinit var badgeRepo: RiskBadgeRepository
-    private lateinit var priceRepo: DailyPriceRepository
+    private lateinit var stockDao: StockLakeDao
+    private lateinit var badgeDao: RiskBadgeLakeDao
+    private lateinit var priceDao: PriceLakeDao
     private lateinit var calcClient: CalcServerClient
     private lateinit var service: PortfolioService
 
     @BeforeEach
     fun setUp() {
         store = Mockito.mock(PortfolioStore::class.java)
-        stockRepo = Mockito.mock(StockRepository::class.java)
-        badgeRepo = Mockito.mock(RiskBadgeRepository::class.java)
-        priceRepo = Mockito.mock(DailyPriceRepository::class.java)
+        stockDao = Mockito.mock(StockLakeDao::class.java)
+        badgeDao = Mockito.mock(RiskBadgeLakeDao::class.java)
+        priceDao = Mockito.mock(PriceLakeDao::class.java)
         calcClient = Mockito.mock(CalcServerClient::class.java)
-        service = PortfolioService(store, stockRepo, badgeRepo, priceRepo, calcClient)
+        service = PortfolioService(store, stockDao, badgeDao, priceDao, calcClient)
     }
 
     @Test
@@ -198,7 +197,7 @@ class PortfolioServiceTest {
     @Test
     fun `getPortfolioDetail maps holdings without prices`() {
         stubDoc(holding(stockId = 7, shares = "10", avgPrice = "1000"))
-        Mockito.`when`(stockRepo.findByIdIn(listOf(7L))).thenReturn(listOf(stock(7, Market.KR_KOSPI)))
+        Mockito.`when`(stockDao.findByIds(listOf(7L))).thenReturn(listOf(stock(7, Market.KR_KOSPI)))
 
         val detail = service.getPortfolioDetail(krId, userId)
 
@@ -223,7 +222,7 @@ class PortfolioServiceTest {
     }
 
     private fun stubStock(stockId: Long, market: Market) {
-        Mockito.`when`(stockRepo.findById(stockId)).thenReturn(Optional.of(stock(stockId, market)))
+        Mockito.`when`(stockDao.findById(stockId)).thenReturn(stock(stockId, market))
     }
 
     private fun stock(stockId: Long, market: Market) =

@@ -4,12 +4,12 @@ import me.saramquantgateway.domain.document.HoldingEntry
 import me.saramquantgateway.domain.document.LlmAnalysisDoc
 import me.saramquantgateway.domain.enum.market.Country
 import me.saramquantgateway.domain.enum.market.Maturity
-import me.saramquantgateway.domain.repository.fundamental.StockFundamentalRepository
-import me.saramquantgateway.domain.repository.indicator.StockIndicatorRepository
-import me.saramquantgateway.domain.repository.market.RiskFreeRateRepository
-import me.saramquantgateway.domain.repository.market.SectorAggregateRepository
-import me.saramquantgateway.domain.repository.riskbadge.RiskBadgeRepository
-import me.saramquantgateway.domain.repository.stock.StockRepository
+import me.saramquantgateway.domain.lake.FundamentalLakeDao
+import me.saramquantgateway.domain.lake.IndicatorLakeDao
+import me.saramquantgateway.domain.lake.MarketRefLakeDao
+import me.saramquantgateway.domain.lake.RiskBadgeLakeDao
+import me.saramquantgateway.domain.lake.SectorLakeDao
+import me.saramquantgateway.domain.lake.StockLakeDao
 import me.saramquantgateway.domain.store.LlmCacheStore
 import me.saramquantgateway.feature.llm.dto.LlmAnalysisResponse
 import me.saramquantgateway.feature.portfolio.service.PortfolioService
@@ -29,12 +29,12 @@ import java.util.concurrent.TimeUnit
 @Service
 class PortfolioLlmService(
     private val portfolioService: PortfolioService,
-    private val stockRepo: StockRepository,
-    private val indicatorRepo: StockIndicatorRepository,
-    private val fundamentalRepo: StockFundamentalRepository,
-    private val badgeRepo: RiskBadgeRepository,
-    private val sectorAggRepo: SectorAggregateRepository,
-    private val riskFreeRateRepo: RiskFreeRateRepository,
+    private val stockDao: StockLakeDao,
+    private val indicatorDao: IndicatorLakeDao,
+    private val fundamentalDao: FundamentalLakeDao,
+    private val badgeDao: RiskBadgeLakeDao,
+    private val sectorAggDao: SectorLakeDao,
+    private val marketRefDao: MarketRefLakeDao,
     private val cacheStore: LlmCacheStore,
     private val calcClient: CalcServerClient,
     private val promptBuilder: PromptBuilder,
@@ -100,10 +100,10 @@ class PortfolioLlmService(
         lang: String,
     ): PortfolioContextData {
         val stockIds = holdings.map { it.stockId }
-        val stockMap = stockRepo.findByIdIn(stockIds).associateBy { it.id }
-        val indicatorMap = indicatorRepo.findLatestByStockIds(stockIds).associateBy { it.stockId }
-        val fundamentalMap = fundamentalRepo.findLatestByStockIds(stockIds).associateBy { it.stockId }
-        val badgeMap = badgeRepo.findByStockIdIn(stockIds).associateBy { it.stockId }
+        val stockMap = stockDao.findByIds(stockIds).associateBy { it.id }
+        val indicatorMap = indicatorDao.findLatestByStockIds(stockIds).associateBy { it.stockId }
+        val fundamentalMap = fundamentalDao.findLatestByStockIds(stockIds).associateBy { it.stockId }
+        val badgeMap = badgeDao.findByStockIds(stockIds).associateBy { it.stockId }
 
         val totalValue = holdings.sumOf { it.shares.multiply(it.avgPrice).toDouble() }
         val needFundamentals = preset in setOf("financial_weakness", "aggressive")
@@ -116,7 +116,7 @@ class PortfolioLlmService(
             val weight = if (totalValue > 0) h.shares.multiply(h.avgPrice).toDouble() / totalValue * 100.0 else 0.0
 
             val sectorAgg = if (needFundamentals && stock.sector != null)
-                sectorAggRepo.findTop1ByMarketAndSectorOrderByDateDesc(stock.market, stock.sector)
+                sectorAggDao.findLatestByMarketAndSector(stock.market, stock.sector)
             else null
 
             HoldingContext(
@@ -136,7 +136,7 @@ class PortfolioLlmService(
 
         val firstStock = stockMap.values.firstOrNull()
         val country = firstStock?.let { Country.forMarket(it.market) } ?: Country.KR
-        val riskFreeRate = riskFreeRateRepo.findTop1ByCountryAndMaturityOrderByDateDesc(country, Maturity.Y1)?.rate
+        val riskFreeRate = marketRefDao.findLatestRiskFreeRate(country, Maturity.Y1)?.rate
         val benchmark = if (country == Country.KR) "KOSPI" else "S&P500"
 
         @Suppress("UNCHECKED_CAST")
