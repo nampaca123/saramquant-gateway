@@ -3,7 +3,7 @@ package me.saramquantgateway.feature.recommendation.controller
 import com.fasterxml.jackson.databind.ObjectMapper
 import me.saramquantgateway.domain.enum.recommendation.RecommendationDirection
 import me.saramquantgateway.domain.repository.recommendation.PortfolioRecommendationRepository
-import me.saramquantgateway.domain.repository.user.UserProfileRepository
+import me.saramquantgateway.domain.store.UserStore
 import me.saramquantgateway.feature.llm.service.LlmUsageService
 import me.saramquantgateway.feature.portfolio.dto.PortfolioDetail
 import me.saramquantgateway.feature.portfolio.service.PortfolioService
@@ -26,7 +26,7 @@ class RecommendationController(
     private val agentService: RecommendationAgentService,
     private val usageService: LlmUsageService,
     private val portfolioService: PortfolioService,
-    private val profileRepo: UserProfileRepository,
+    private val userStore: UserStore,
     private val recRepo: PortfolioRecommendationRepository,
     private val objectMapper: ObjectMapper,
     @Qualifier("llmExecutor") private val llmExecutor: Executor,
@@ -64,7 +64,7 @@ class RecommendationController(
         }
 
         val portfolio = loadPortfolioOrEmpty(userId, marketGroup)
-        val profile = profileRepo.findByUserId(userId)
+        val profile = userStore.findById(userId)
         val effectiveLang = if (lang in VALID_LANGS) lang else "ko"
         val req = RecommendationRequest(marketGroup, effectiveLang, parsedDirection)
 

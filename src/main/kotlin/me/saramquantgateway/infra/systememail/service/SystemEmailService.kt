@@ -1,7 +1,7 @@
 package me.saramquantgateway.infra.systememail.service
 
 import com.fasterxml.jackson.databind.ObjectMapper
-import me.saramquantgateway.domain.entity.user.User
+import me.saramquantgateway.domain.document.UserDoc
 import me.saramquantgateway.infra.systememail.util.EmailTemplateRenderer
 import me.saramquantgateway.infra.aws.lib.AwsSesClient
 import me.saramquantgateway.infra.log.entity.AuditLog
@@ -28,7 +28,7 @@ class SystemEmailService(
     }
 
     @Async
-    fun sendWelcomeEmail(user: User) {
+    fun sendWelcomeEmail(user: UserDoc) {
         send(
             to = user.email,
             subject = "Welcome to SaramQuant — investing starts simple",
@@ -44,7 +44,7 @@ class SystemEmailService(
     }
 
     @Async
-    fun sendDeactivationEmail(user: User) {
+    fun sendDeactivationEmail(user: UserDoc) {
         send(
             to = user.email,
             subject = "Your SaramQuant account has been deactivated",
@@ -60,7 +60,7 @@ class SystemEmailService(
     }
 
     @Async
-    fun sendReactivationEmail(user: User) {
+    fun sendReactivationEmail(user: UserDoc) {
         send(
             to = user.email,
             subject = "Welcome back to SaramQuant",

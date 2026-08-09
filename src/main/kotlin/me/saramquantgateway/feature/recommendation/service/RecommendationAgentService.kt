@@ -5,7 +5,7 @@ import com.anthropic.core.JsonValue
 import com.anthropic.models.messages.*
 import com.fasterxml.jackson.databind.ObjectMapper
 import me.saramquantgateway.domain.entity.recommendation.PortfolioRecommendation
-import me.saramquantgateway.domain.entity.user.UserProfile
+import me.saramquantgateway.domain.document.UserDoc
 import me.saramquantgateway.domain.repository.recommendation.PortfolioRecommendationRepository
 import me.saramquantgateway.feature.portfolio.dto.PortfolioDetail
 import me.saramquantgateway.feature.recommendation.dto.*
@@ -69,7 +69,7 @@ class RecommendationAgentService(
         req: RecommendationRequest,
         portfolio: PortfolioDetail,
         userId: UUID,
-        profile: UserProfile?,
+        profile: UserDoc?,
         emitter: SseEmitter,
     ): Boolean {
         val cancelled = AtomicBoolean(false)

@@ -1,6 +1,6 @@
 package me.saramquantgateway.infra.user.dto
 
-import me.saramquantgateway.domain.entity.user.User
+import me.saramquantgateway.domain.document.UserDoc
 import me.saramquantgateway.domain.enum.auth.AuthProvider
 import me.saramquantgateway.domain.enum.user.UserRole
 import java.util.UUID
@@ -15,7 +15,7 @@ data class UserResponse(
     val profile: ProfileResponse?,
 ) {
     companion object {
-        fun from(user: User, profile: ProfileResponse?) = UserResponse(
+        fun from(user: UserDoc, profile: ProfileResponse?) = UserResponse(
             id = user.id,
             email = user.email,
             name = user.name,

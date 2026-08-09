@@ -1,6 +1,6 @@
 package me.saramquantgateway.infra.auth.service
 
-import me.saramquantgateway.domain.entity.user.User
+import me.saramquantgateway.domain.document.UserDoc
 import me.saramquantgateway.domain.enum.auth.AuthProvider
 import me.saramquantgateway.infra.auth.dto.ManualLoginRequest
 import me.saramquantgateway.infra.auth.dto.ManualSignupRequest
@@ -18,7 +18,6 @@ import me.saramquantgateway.infra.user.service.UserService
 import me.saramquantgateway.infra.systememail.service.SystemEmailService
 import org.springframework.security.crypto.password.PasswordEncoder
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
 import java.util.UUID
 
 @Service
@@ -35,7 +34,6 @@ class AuthService(
     private val emailVerificationService: EmailVerificationService,
 ) {
 
-    @Transactional
     fun oauthLogin(provider: AuthProvider, code: String): AuthResult {
         val client: OAuthClient = when (provider) {
             AuthProvider.GOOGLE -> googleClient
@@ -47,7 +45,7 @@ class AuthService(
         val userInfo = client.getUserInfo(tokenRes.accessToken)
 
         val existing = userService.findByEmail(userInfo.email)
-        val user: User
+        val user: UserDoc
 
         if (existing != null) {
             if (existing.provider != provider) {
@@ -70,7 +68,6 @@ class AuthService(
         return issueTokens(user)
     }
 
-    @Transactional
     fun manualSignup(req: ManualSignupRequest): AuthResult {
         emailVerificationService.assertVerified(req.email, VerificationPurpose.SIGNUP, req.verificationId)
         val existing = userService.findByEmail(req.email)
@@ -84,13 +81,13 @@ class AuthService(
         return issueTokens(user)
     }
 
-    @Transactional
     fun resetPassword(req: ResetPasswordRequest) {
         emailVerificationService.assertVerified(req.email, VerificationPurpose.PASSWORD_RESET, req.verificationId)
         val user = userService.findActiveByEmail(req.email)
             ?: throw InvalidResetTargetException()
         if (user.provider != AuthProvider.MANUAL || user.passwordHash == null) throw InvalidResetTargetException()
         user.passwordHash = passwordEncoder.encode(req.newPassword)
+        userService.save(user)
         refreshTokenService.revokeAll(user.id)
     }
 
@@ -128,14 +125,14 @@ class AuthService(
 
     fun logoutAll(userId: UUID) = refreshTokenService.revokeAll(userId)
 
-    private fun issueTokens(user: User): AuthResult {
+    private fun issueTokens(user: UserDoc): AuthResult {
         val accessToken = jwtProvider.generateAccessToken(user.id, user.email, user.provider, user.role)
         val refreshToken = jwtProvider.generateRefreshToken(user.id)
         refreshTokenService.save(user.id, refreshToken)
         return AuthResult(accessToken, refreshToken, user)
     }
 
-    data class AuthResult(val accessToken: String, val refreshToken: String, val user: User?)
+    data class AuthResult(val accessToken: String, val refreshToken: String, val user: UserDoc?)
 
     class DuplicateEmailException(val existingProvider: AuthProvider) :
         RuntimeException("Email already registered with $existingProvider")

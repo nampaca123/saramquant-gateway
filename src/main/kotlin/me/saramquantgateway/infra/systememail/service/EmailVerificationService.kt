@@ -1,14 +1,13 @@
 package me.saramquantgateway.infra.systememail.service
 
-import me.saramquantgateway.infra.systememail.entity.EmailVerificationCode
+import me.saramquantgateway.domain.document.EmailVerificationDoc
+import me.saramquantgateway.domain.store.EmailVerificationStore
 import me.saramquantgateway.infra.systememail.enum.VerificationPurpose
-import me.saramquantgateway.infra.systememail.repository.EmailVerificationCodeRepository
 import me.saramquantgateway.infra.systememail.util.EmailTemplateRenderer
 import me.saramquantgateway.infra.aws.lib.AwsSesClient
 import me.saramquantgateway.infra.security.crypto.Hasher
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
 import java.security.SecureRandom
 import java.time.Duration
 import java.time.Instant
@@ -16,7 +15,7 @@ import java.util.UUID
 
 @Service
 class EmailVerificationService(
-    private val repo: EmailVerificationCodeRepository,
+    private val store: EmailVerificationStore,
     private val hasher: Hasher,
     private val renderer: EmailTemplateRenderer,
     private val sesClient: AwsSesClient,
@@ -31,25 +30,19 @@ class EmailVerificationService(
         private const val MAX_ATTEMPTS = 5
     }
 
-    @Transactional
     fun sendCode(email: String, purpose: VerificationPurpose) {
         val emailHash = hasher.hash(email)
         val purposeStr = purpose.name
 
-        val latest = repo.findFirstByEmailHashAndPurposeOrderByCreatedAtDesc(emailHash, purposeStr)
-
-        if (latest != null && !latest.verified && latest.expiresAt.isAfter(Instant.now())) {
-            latest.expiresAt = Instant.now()
-            repo.save(latest)
-        }
+        val latest = store.findLatest(emailHash, purposeStr)
 
         if (latest != null && latest.createdAt.plus(RESEND_COOLDOWN).isAfter(Instant.now())) {
             throw RateLimitedException()
         }
 
         val code = "%05d".format(random.nextInt(100_000))
-        repo.save(
-            EmailVerificationCode(
+        store.save(
+            EmailVerificationDoc(
                 emailHash = emailHash,
                 purpose = purposeStr,
                 code = code,
@@ -76,20 +69,15 @@ class EmailVerificationService(
         val emailHash = hasher.hash(email)
         val purposeStr = VerificationPurpose.PASSWORD_RESET.name
 
-        val latest = repo.findFirstByEmailHashAndPurposeOrderByCreatedAtDesc(emailHash, purposeStr)
-
-        if (latest != null && !latest.verified && latest.expiresAt.isAfter(Instant.now())) {
-            latest.expiresAt = Instant.now()
-            repo.save(latest)
-        }
+        val latest = store.findLatest(emailHash, purposeStr)
 
         if (latest != null && latest.createdAt.plus(RESEND_COOLDOWN).isAfter(Instant.now())) {
             throw RateLimitedException()
         }
 
         val code = "%05d".format(random.nextInt(100_000))
-        repo.save(
-            EmailVerificationCode(
+        store.save(
+            EmailVerificationDoc(
                 emailHash = emailHash,
                 purpose = purposeStr,
                 code = code,
@@ -107,15 +95,14 @@ class EmailVerificationService(
         }
     }
 
-    @Transactional
     fun verify(email: String, purpose: VerificationPurpose, code: String): UUID {
         val emailHash = hasher.hash(email)
-        val record = repo.findFirstByEmailHashAndPurposeAndVerifiedFalseOrderByCreatedAtDesc(emailHash, purpose.name)
+        val record = store.findLatest(emailHash, purpose.name)?.takeIf { !it.verified }
             ?: throw InvalidCodeException()
 
         if (record.attempts >= MAX_ATTEMPTS) {
             record.expiresAt = Instant.now()
-            repo.save(record)
+            store.save(record)
             throw TooManyAttemptsException()
         }
 
@@ -123,19 +110,19 @@ class EmailVerificationService(
 
         if (record.code != code) {
             record.attempts += 1
-            repo.save(record)
+            store.save(record)
             throw InvalidCodeException()
         }
 
         record.verified = true
         record.verifiedAt = Instant.now()
-        repo.save(record)
+        store.save(record)
         return record.id
     }
 
     fun assertVerified(email: String, purpose: VerificationPurpose, verificationId: UUID) {
         val emailHash = hasher.hash(email)
-        val record = repo.findByIdAndEmailHashAndPurposeAndVerifiedTrue(verificationId, emailHash, purpose.name)
+        val record = store.findVerified(verificationId, emailHash, purpose.name)
             ?: throw EmailNotVerifiedException()
 
         val verifiedAt = record.verifiedAt ?: throw EmailNotVerifiedException()

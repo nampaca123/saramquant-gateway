@@ -1,48 +1,52 @@
 package me.saramquantgateway.infra.user.service
 
-import me.saramquantgateway.domain.repository.user.UserProfileRepository
+import me.saramquantgateway.domain.document.UserDoc
+import me.saramquantgateway.domain.store.UserStore
 import me.saramquantgateway.infra.user.dto.ProfileResponse
 import me.saramquantgateway.infra.user.dto.ProfileUpdateRequest
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
+import java.time.Instant
 import java.util.UUID
 
 @Service
-class ProfileService(private val profileRepo: UserProfileRepository) {
+class ProfileService(private val userStore: UserStore) {
 
     fun getByUserId(userId: UUID): ProfileResponse? =
-        profileRepo.findByUserId(userId)?.let { ProfileResponse.from(it) }
+        userStore.findById(userId)?.let { ProfileResponse.from(it) }
 
-    @Transactional
     fun update(userId: UUID, req: ProfileUpdateRequest): ProfileResponse {
-        val profile = profileRepo.findByUserId(userId)
+        val user = userStore.findById(userId)
             ?: throw IllegalArgumentException("Profile not found")
 
-        req.nickname?.let { profile.nickname = it }
-        req.birthYear?.let { profile.birthYear = it }
-        req.gender?.let { profile.gender = it }
-        req.investmentExperience?.let { profile.investmentExperience = it }
+        req.nickname?.let { user.nickname = it }
+        req.birthYear?.let { user.birthYear = it }
+        req.gender?.let { user.gender = it }
+        req.investmentExperience?.let { user.investmentExperience = it }
         req.preferredMarkets?.let {
-            profile.preferredMarkets.clear()
-            profile.preferredMarkets.addAll(it)
+            user.preferredMarkets.clear()
+            user.preferredMarkets.addAll(it)
         }
 
-        return ProfileResponse.from(profileRepo.save(profile))
+        persist(user)
+        return ProfileResponse.from(user)
     }
 
-    @Transactional
     fun updateImageUrl(userId: UUID, url: String) {
-        profileRepo.findByUserId(userId)?.let {
-            it.profileImageUrl = url
-            profileRepo.save(it)
+        userStore.findById(userId)?.let {
+            it.profileImageKey = url
+            persist(it)
         }
     }
 
-    @Transactional
     fun clearImageUrl(userId: UUID) {
-        profileRepo.findByUserId(userId)?.let {
-            it.profileImageUrl = null
-            profileRepo.save(it)
+        userStore.findById(userId)?.let {
+            it.profileImageKey = null
+            persist(it)
         }
+    }
+
+    private fun persist(user: UserDoc) {
+        user.updatedAt = Instant.now()
+        userStore.save(user)
     }
 }
