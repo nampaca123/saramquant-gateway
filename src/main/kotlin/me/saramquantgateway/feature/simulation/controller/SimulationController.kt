@@ -4,7 +4,9 @@ import me.saramquantgateway.feature.simulation.dto.PortfolioSimulationRequest
 import me.saramquantgateway.feature.simulation.dto.StockSimulationRequest
 import me.saramquantgateway.feature.simulation.service.SimulationService
 import org.springframework.http.ResponseEntity
+import org.springframework.security.core.context.SecurityContextHolder
 import org.springframework.web.bind.annotation.*
+import java.util.UUID
 
 @RestController
 class SimulationController(
@@ -40,8 +42,11 @@ class SimulationController(
             "lookback" to req.lookback.toString(),
             "method" to req.method,
         )
-        val result = simulationService.runPortfolioSimulation(id, params)
+        val result = simulationService.runPortfolioSimulation(id, currentUserId(), params)
             ?: return ResponseEntity.status(502).body(mapOf("error" to "Calc server unavailable"))
         return ResponseEntity.ok(result)
     }
+
+    private fun currentUserId(): UUID =
+        UUID.fromString(SecurityContextHolder.getContext().authentication!!.name)
 }

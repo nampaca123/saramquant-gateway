@@ -3,6 +3,7 @@ package me.saramquantgateway.feature.portfolio.controller
 import me.saramquantgateway.domain.store.LlmCacheStore
 import me.saramquantgateway.feature.portfolio.dto.BuyRequest
 import me.saramquantgateway.feature.portfolio.dto.SellRequest
+import me.saramquantgateway.feature.portfolio.service.CalcPortfolioRequestBuilder
 import me.saramquantgateway.feature.portfolio.service.PortfolioService
 import me.saramquantgateway.infra.connection.CalcServerClient
 import org.springframework.http.HttpStatus
@@ -17,6 +18,7 @@ class PortfolioController(
     private val portfolioService: PortfolioService,
     private val calcClient: CalcServerClient,
     private val llmCacheStore: LlmCacheStore,
+    private val calcRequestBuilder: CalcPortfolioRequestBuilder,
 ) {
 
     @GetMapping
@@ -67,9 +69,10 @@ class PortfolioController(
     @GetMapping("/{id}/analysis")
     fun analysis(@PathVariable id: Long): ResponseEntity<Any> {
         val userId = currentUserId()
-        portfolioService.verifyOwnership(id, userId)
+        val portfolio = portfolioService.verifyOwnership(id, userId)
 
-        val result = calcClient.post("/internal/portfolios/full-analysis", mapOf("portfolio_id" to id))
+        val body = calcRequestBuilder.build(portfolio.marketGroup, portfolio.holdings.toList())
+        val result = calcClient.post("/internal/portfolios/full-analysis", body)
             ?: return ResponseEntity.ok(emptyMap<String, Any>())
 
         val mutable = (result as Map<String, Any?>).toMutableMap()

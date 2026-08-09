@@ -12,6 +12,7 @@ import me.saramquantgateway.domain.lake.SectorLakeDao
 import me.saramquantgateway.domain.lake.StockLakeDao
 import me.saramquantgateway.domain.store.LlmCacheStore
 import me.saramquantgateway.feature.llm.dto.LlmAnalysisResponse
+import me.saramquantgateway.feature.portfolio.service.CalcPortfolioRequestBuilder
 import me.saramquantgateway.feature.portfolio.service.PortfolioService
 import me.saramquantgateway.infra.llm.config.LlmProperties
 import me.saramquantgateway.infra.llm.lib.LlmRouter
@@ -37,6 +38,7 @@ class PortfolioLlmService(
     private val marketRefDao: MarketRefLakeDao,
     private val cacheStore: LlmCacheStore,
     private val calcClient: CalcServerClient,
+    private val calcRequestBuilder: CalcPortfolioRequestBuilder,
     private val promptBuilder: PromptBuilder,
     private val llmRouter: LlmRouter,
     private val props: LlmProperties,
@@ -45,7 +47,8 @@ class PortfolioLlmService(
     private val inFlight = ConcurrentHashMap<String, CompletableFuture<String>>()
 
     fun analyze(portfolioId: Long, userId: UUID, preset: String, lang: String): LlmAnalysisResponse {
-        val holdings = portfolioService.verifyOwnership(portfolioId, userId).holdings.toList()
+        val portfolio = portfolioService.verifyOwnership(portfolioId, userId)
+        val holdings = portfolio.holdings.toList()
         if (holdings.isEmpty()) {
             return LlmAnalysisResponse(
                 analysis = if (lang == "en") "No holdings in this portfolio." else "포트폴리오에 보유 종목이 없습니다.",
@@ -62,7 +65,10 @@ class PortfolioLlmService(
 
         val cacheKey = "$portfolioId:$today:$preset:$lang"
         val future = inFlight.computeIfAbsent(cacheKey) {
-            CompletableFuture.supplyAsync({ generateAndCache(portfolioId, holdings, today, preset, lang) }, llmExecutor)
+            CompletableFuture.supplyAsync(
+                { generateAndCache(portfolioId, portfolio.marketGroup, holdings, today, preset, lang) },
+                llmExecutor,
+            )
         }
 
         try {
@@ -75,12 +81,13 @@ class PortfolioLlmService(
 
     private fun generateAndCache(
         portfolioId: Long,
+        marketGroup: String,
         holdings: List<HoldingEntry>,
         today: LocalDate,
         preset: String,
         lang: String,
     ): String {
-        val data = buildContextData(portfolioId, holdings, preset, lang)
+        val data = buildContextData(marketGroup, holdings, preset, lang)
         val (system, user) = promptBuilder.buildPortfolioPrompt(data, preset, lang)
         val result = llmRouter.complete(props.portfolioModel, system, user)
 
@@ -94,7 +101,7 @@ class PortfolioLlmService(
     }
 
     private fun buildContextData(
-        portfolioId: Long,
+        marketGroup: String,
         holdings: List<HoldingEntry>,
         preset: String,
         lang: String,
@@ -132,7 +139,10 @@ class PortfolioLlmService(
             )
         }
 
-        val analysis = calcClient.post("/internal/portfolios/full-analysis", mapOf("portfolio_id" to portfolioId))
+        val analysis = calcClient.post(
+            "/internal/portfolios/full-analysis",
+            calcRequestBuilder.build(marketGroup, holdings),
+        )
 
         val firstStock = stockMap.values.firstOrNull()
         val country = firstStock?.let { Country.forMarket(it.market) } ?: Country.KR
