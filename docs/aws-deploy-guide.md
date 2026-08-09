@@ -85,7 +85,7 @@ Gateway의 OAuth 콜백 엔드포인트는 고정 경로(`/login/oauth2/code/{pr
 
 변경 후 **Redeploy**(또는 다음 push)로 반영해야 한다. 환경변수만 바꾸고 재배포하지 않으면 이전 빌드가 그대로 서빙된다.
 
-> 참고: gateway 쪽 GitHub Variable `FRONTEND_REDIRECT_URL`(OAuth 로그인 후 리다이렉트 대상)과 `CORS_ALLOWED_ORIGIN`(허용 Origin)도 현재 `localhost:3000` 플레이스홀더로 등록되어 있다. Vercel 프로덕션 도메인이 확정되면 이 두 GitHub Variable도 함께 실제 도메인으로 교체해야 로그인 리다이렉트와 CORS가 프로덕션에서 동작한다(Repository → Settings → Secrets and variables → Actions → Variables).
+> 참고: gateway 쪽 GitHub Variable `FRONTEND_REDIRECT_URL`(OAuth 로그인 후 리다이렉트 대상)과 `CORS_ALLOWED_ORIGIN`(허용 Origin)은 프로덕션 프론트엔드 도메인 `https://saramquant.com`으로 등록되어 있다. **프론트엔드를 다른 도메인(예: `https://<project>.vercel.app`)으로 서빙한다면 병합 전에 이 두 GitHub Variable을 실제 도메인으로 반드시 교체해야 한다** — 값이 틀리면 CORS가 모든 브라우저 요청을 막고 OAuth 로그인 리다이렉트가 엉뚱한 곳으로 간다(Repository → Settings → Secrets and variables → Actions → Variables).
 
 ---
 

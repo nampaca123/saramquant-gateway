@@ -51,6 +51,6 @@
 1. NameCheap `api.saramquant.com` A레코드 → EIP (첫 `main` 배포 후 GH Actions job summary에서 값 확인)
 2. Google/Kakao 콘솔에 프로덕션 redirect URI 등록 (`https://api.saramquant.com/login/oauth2/code/{google,kakao}`)
 3. Vercel `GATEWAY_INTERNAL_URL` → `https://api.saramquant.com` 갱신 후 재배포
-4. GH Variable `FRONTEND_REDIRECT_URL`·`CORS_ALLOWED_ORIGIN`을 현재 localhost 플레이스홀더에서 실제 Vercel 프로덕션 도메인으로 교체 (T14에서 임시값으로 등록됨)
+4. GH Variable `FRONTEND_REDIRECT_URL`·`CORS_ALLOWED_ORIGIN`은 `https://saramquant.com`으로 등록 완료 — 프론트엔드를 다른 도메인으로 서빙한다면 병합 전에 실제 도메인으로 교체할 것
 
 `COOKIE_SECURE`는 T14에서 이미 `true`로 갱신 완료 — 별도 조치 불필요.
