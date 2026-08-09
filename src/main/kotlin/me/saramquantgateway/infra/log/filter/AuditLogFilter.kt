@@ -32,7 +32,7 @@ class AuditLogFilter(
 
     override fun shouldNotFilter(request: HttpServletRequest): Boolean {
         val path = request.servletPath
-        return path.startsWith("/actuator") || path == "/favicon.ico"
+        return path.startsWith("/actuator") || path == "/favicon.ico" || path == "/healthz"
     }
 
     override fun doFilterInternal(

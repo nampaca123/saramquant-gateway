@@ -21,7 +21,11 @@ class UserStore(
         kv.get(pointerKey(emailHash), EmailPointerDoc::class.java)?.let { findById(it.userId) }
 
     fun create(doc: UserDoc): Boolean {
-        if (!kv.putIfAbsent(pointerKey(doc.emailHash), EmailPointerDoc(doc.id))) return false
+        if (!kv.putIfAbsent(pointerKey(doc.emailHash), EmailPointerDoc(doc.id))) {
+            // 유저 문서가 없는 고아 포인터는 예약을 덮어써서 회수한다.
+            if (!isDanglingPointer(doc.emailHash)) return false
+            kv.put(pointerKey(doc.emailHash), EmailPointerDoc(doc.id))
+        }
         try {
             kv.put(userKey(doc.id), encrypt(doc))
         } catch (e: Exception) {
@@ -33,6 +37,11 @@ class UserStore(
 
     fun save(doc: UserDoc) {
         kv.put(userKey(doc.id), encrypt(doc))
+    }
+
+    private fun isDanglingPointer(emailHash: String): Boolean {
+        val pointer = kv.get(pointerKey(emailHash), EmailPointerDoc::class.java) ?: return true
+        return kv.get(userKey(pointer.userId), UserDoc::class.java) == null
     }
 
     private fun encrypt(doc: UserDoc): UserDoc = doc.copy(

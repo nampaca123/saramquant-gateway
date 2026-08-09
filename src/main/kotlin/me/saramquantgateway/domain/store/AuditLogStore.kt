@@ -83,16 +83,24 @@ class AuditLogStore(
         }
     }
 
-    // dt= 프리픽스가 없는 날의 glob은 DuckDB에서 에러가 나므로 실제 존재하는 날만 넘긴다.
+    fun deleteOlderThan(cutoff: LocalDate): Int {
+        val stale = kv.listKeys("$PREFIX/").filter { key ->
+            DAY_PATTERN.find(key)?.groupValues?.get(1)
+                ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+                ?.isBefore(cutoff) == true
+        }
+        stale.forEach { kv.delete(it) }
+        return stale.size
+    }
+
+    // dt= 프리픽스가 없는 날의 glob은 DuckDB에서 에러가 나므로 요청 구간의 날짜만 하나씩 확인한다.
     private fun existingDays(from: Instant, to: Instant): List<LocalDate> {
         val fromDay = LocalDate.ofInstant(from, ZoneOffset.UTC)
         val toDay = LocalDate.ofInstant(to, ZoneOffset.UTC)
-        return kv.listKeys("$PREFIX/")
-            .mapNotNull { DAY_PATTERN.find(it)?.groupValues?.get(1) }
-            .distinct()
-            .mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }
-            .filter { !it.isBefore(fromDay) && !it.isAfter(toDay) }
-            .sorted()
+        return generateSequence(fromDay) { it.plusDays(1) }
+            .takeWhile { !it.isAfter(toDay) }
+            .filter { kv.listKeys("$PREFIX/dt=$it/").isNotEmpty() }
+            .toList()
     }
 
     private fun source(days: List<LocalDate>): String {

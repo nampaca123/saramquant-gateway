@@ -9,7 +9,6 @@ import me.saramquantgateway.infra.log.dto.VisitStatsResponse
 import me.saramquantgateway.infra.log.dto.VisitSummary
 import org.springframework.stereotype.Service
 import java.time.LocalDate
-import java.time.ZoneId
 
 @Service
 class VisitStatsService(
@@ -17,9 +16,7 @@ class VisitStatsService(
 ) {
 
     fun getStats(startDate: LocalDate?, endDate: LocalDate?): VisitStatsResponse {
-        val zone = ZoneId.of("Asia/Seoul")
-        val from = (startDate ?: LocalDate.of(2020, 1, 1)).atStartOfDay(zone).toInstant()
-        val to = (endDate?.plusDays(1) ?: LocalDate.of(2099, 1, 1)).atStartOfDay(zone).toInstant()
+        val (from, to) = AuditLogRange.resolve(startDate, endDate)
 
         val stats = store.countVisitors(from, to)
         val totalVisits = visitorCount(stats)

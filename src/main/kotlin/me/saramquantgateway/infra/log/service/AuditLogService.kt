@@ -7,7 +7,6 @@ import org.springframework.data.domain.PageImpl
 import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
 import java.time.LocalDate
-import java.time.ZoneId
 
 @Service
 class AuditLogService(
@@ -21,9 +20,7 @@ class AuditLogService(
         endDate: LocalDate?,
         pageable: Pageable,
     ): Page<AuditLogResponse> {
-        val zone = ZoneId.of("Asia/Seoul")
-        val from = (startDate ?: LocalDate.of(2020, 1, 1)).atStartOfDay(zone).toInstant()
-        val to = (endDate?.plusDays(1) ?: LocalDate.of(2099, 1, 1)).atStartOfDay(zone).toInstant()
+        val (from, to) = AuditLogRange.resolve(startDate, endDate)
 
         val result = store.findFiltered(
             server, action, from, to, pageable.pageNumber, pageable.pageSize,
