@@ -6,6 +6,7 @@ import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Component
 import java.time.Instant
 import java.time.temporal.ChronoUnit
+import java.util.UUID
 
 @Component
 class VerificationCodeCleanupScheduler(
@@ -13,10 +14,21 @@ class VerificationCodeCleanupScheduler(
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
+    // 실행 1건당 구조화 로그 1줄을 try/finally로 남긴다.
     @Scheduled(cron = "0 0 3 * * *")
     fun cleanupExpiredCodes() {
-        val cutoff = Instant.now().minus(24, ChronoUnit.HOURS)
-        val deleted = store.deleteExpired(cutoff)
-        log.info("[VerificationCleanup] Deleted {} codes untouched before {}", deleted, cutoff)
+        val runId = UUID.randomUUID().toString()
+        val startedAt = System.currentTimeMillis()
+        var deleted = 0
+        var status = "error"
+        try {
+            deleted = store.deleteExpired(Instant.now().minus(24, ChronoUnit.HOURS))
+            status = "ok"
+        } finally {
+            log.info(
+                """{"event":"verification_code_cleanup","run_id":"%s","status":"%s","deleted":%d,"duration_ms":%d}"""
+                    .format(runId, status, deleted, System.currentTimeMillis() - startedAt),
+            )
+        }
     }
 }

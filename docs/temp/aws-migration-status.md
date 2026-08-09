@@ -8,22 +8,36 @@
 ## 태스크 체크리스트
 
 - [x] T0 브랜치·상태문서·CLAUDE.md 태그
-- [ ] T1 Gradle 의존성 + S3 설정 골격
-- [ ] T2 S3KvStore
-- [ ] T3 DuckDB 실행기 + Glue 리졸버
-- [ ] T4 유저·인증 스토리지
-- [ ] T5 포트폴리오 스토리지
-- [ ] T6 LLM 스토리지
-- [ ] T7 감사로그 + Naver 제거
-- [ ] T8 시장 데이터 Lake DAO
-- [ ] T9 calc 계약 변경
-- [ ] T10 프로필 이미지 S3
-- [ ] T11 JPA 제거 + 로컬 검증
+- [x] T1 Gradle 의존성 + S3 설정 골격
+- [x] T2 S3KvStore
+- [x] T3 DuckDB 실행기 + Glue 리졸버
+- [x] T4 유저·인증 스토리지
+- [x] T5 포트폴리오 스토리지
+- [x] T6 LLM 스토리지
+- [x] T7 감사로그 + Naver 제거
+- [x] T8 시장 데이터 Lake DAO
+- [x] T9 calc 계약 변경
+- [x] T10 프로필 이미지 S3
+- [x] T11 JPA 제거 + 로컬 검증
 - [ ] T12 Dockerfile + caddy
 - [ ] T13 Terraform
 - [ ] T14 deploy.yml + GH 변수
 - [ ] T15 가이드 문서
 - [ ] T16 최종 리뷰→배포→완주
+
+## 로컬 검증 결과 (T11, 2026-08-10)
+
+`./gradlew test` 146건 통과(조건부 skip 1건: 실 레이크 데이터 필요). `scripts/run-with-env.ps1`로 bootRun 기동 → 3.9초 만에 부팅 성공, DataSource/Hibernate 초기화 없음. `refresh_token_cleanup` 구조화 로그가 기동 직후 정상 출력(S3 스토어 연결 확인).
+
+| # | 요청 | 결과 | 비고 |
+|---|---|---|---|
+| 1 | `POST /api/auth/send-verification` | 200 | S3 검증 문서 기록 + SES 발송 성공(예외 없음) |
+| 2 | `POST /api/auth/signup` (미검증 verificationId) | 403 | `EMAIL_NOT_VERIFIED` — 의도된 거부 |
+| 3 | `GET /api/dashboard/sectors` | 200 | `[]` (sector 집계 미적재) |
+| 4 | `GET /api/dashboard/stocks?market=KR_KOSPI` | 200 | 실제 종목 페이지 반환 — Glue/DuckDB 경로 정상 |
+| 5 | `GET /api/dashboard/data-freshness` | 200 | 전 필드 null (run-summary 미생성) |
+| 6 | `GET /api/home/summary` | 200 | 벤치마크 0값 (benchmark 테이블 미적재) |
+| 7 | `/api/**` 인증 헤더 누락 | 403 | `GatewayAuthFilter` 정상 동작 |
 
 ## 타 세션 대기/전달 사항
 

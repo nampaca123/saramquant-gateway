@@ -3,6 +3,7 @@ package me.saramquantgateway.infra.jwt.service
 import me.saramquantgateway.domain.document.RefreshTokenDoc
 import me.saramquantgateway.domain.store.RefreshTokenStore
 import me.saramquantgateway.infra.jwt.lib.JwtProvider
+import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
 import java.security.MessageDigest
@@ -14,6 +15,8 @@ class RefreshTokenService(
     private val store: RefreshTokenStore,
     private val jwtProvider: JwtProvider,
 ) {
+    private val log = LoggerFactory.getLogger(javaClass)
+
     companion object {
         private const val GRACE_PERIOD_SECONDS = 10L
     }
@@ -66,8 +69,24 @@ class RefreshTokenService(
         store.revokeAllByUserId(userId, Instant.now())
     }
 
+    // 실행 1건당 구조화 로그 1줄을 try/finally로 남긴다.
     @Scheduled(fixedRate = 3_600_000)
-    fun cleanupExpired(): Int = store.deleteExpired(Instant.now())
+    fun cleanupExpired(): Int {
+        val runId = UUID.randomUUID().toString()
+        val startedAt = System.currentTimeMillis()
+        var deleted = 0
+        var status = "error"
+        try {
+            deleted = store.deleteExpired(Instant.now())
+            status = "ok"
+            return deleted
+        } finally {
+            log.info(
+                """{"event":"refresh_token_cleanup","run_id":"%s","status":"%s","deleted":%d,"duration_ms":%d}"""
+                    .format(runId, status, deleted, System.currentTimeMillis() - startedAt),
+            )
+        }
+    }
 
     private fun issueNew(userId: UUID): String {
         val newToken = jwtProvider.generateRefreshToken(userId)
