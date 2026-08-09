@@ -23,10 +23,13 @@ class S3KvStore(
     private val objectMapper: ObjectMapper,
 ) {
 
-    fun <T : Any> get(key: String, type: Class<T>): T? =
+    fun <T : Any> get(key: String, type: Class<T>): T? = getByAbsoluteKey(fullKey(key), type)
+
+    // 앱 프리픽스 밖(배치가 쓰는 run-summary 등)의 객체를 읽는다.
+    fun <T : Any> getByAbsoluteKey(key: String, type: Class<T>): T? =
         try {
             val bytes = s3.getObjectAsBytes(
-                GetObjectRequest.builder().bucket(props.bucket).key(fullKey(key)).build(),
+                GetObjectRequest.builder().bucket(props.bucket).key(key).build(),
             ).asByteArray()
             objectMapper.readValue(bytes, type)
         } catch (e: NoSuchKeyException) {
