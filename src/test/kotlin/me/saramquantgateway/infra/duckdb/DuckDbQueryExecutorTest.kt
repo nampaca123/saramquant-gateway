@@ -98,15 +98,15 @@ class DuckDbQueryExecutorTest {
 
     @Test
     @EnabledIfEnvironmentVariable(named = "SARAMQUANT_IAM_KEY_ACCESS", matches = ".+")
-    fun `initialized connection has httpfs and iceberg loaded plus the s3 secret`() {
+    fun `initialized connection has httpfs iceberg and aws loaded plus the s3 secret`() {
         DuckDbConfig.openInitializedConnection(REGION).use { initialized ->
             DuckDbQueryExecutor(initialized).use { initializedExecutor ->
                 val loaded = initializedExecutor.query(
-                    "SELECT extension_name FROM duckdb_extensions() WHERE loaded AND extension_name IN ('httpfs', 'iceberg')",
+                    "SELECT extension_name FROM duckdb_extensions() WHERE loaded AND extension_name IN ('httpfs', 'iceberg', 'aws')",
                 ) { it.getString(1) }
                 val secrets = initializedExecutor.query("SELECT name FROM duckdb_secrets()") { it.getString(1) }
 
-                assertEquals(listOf("httpfs", "iceberg"), loaded.sorted())
+                assertEquals(listOf("aws", "httpfs", "iceberg"), loaded.sorted())
                 assertTrue(secrets.contains("s3sec"), "secrets=$secrets")
             }
         }

@@ -19,8 +19,8 @@ class DuckDbConfig(
 ) {
 
     @Bean(destroyMethod = "close")
-    fun duckDbQueryExecutor(): DuckDbQueryExecutor =
-        DuckDbQueryExecutor(openInitializedConnection(s3Properties.region))
+    fun duckDbQueryExecutor(lakeTableResolver: LakeTableResolver): DuckDbQueryExecutor =
+        DuckDbQueryExecutor(openInitializedConnection(s3Properties.region), lakeTableResolver::invalidateAll)
 
     @Bean(destroyMethod = "close")
     fun glueClient(): GlueClient = GlueClient.builder()
@@ -47,18 +47,24 @@ class DuckDbConfig(
             return connection
         }
 
+        // credential_chain은 aws 확장에 있어 암묵 autoload에 기대지 않고 명시적으로 설치·로드한다.
+        val EXTENSIONS = listOf("httpfs", "iceberg", "aws")
+
         private fun initStatements(region: String): List<String> = buildList {
             System.getenv("DUCKDB_EXT_DIR")?.takeIf { it.isNotBlank() }?.let {
                 add("SET extension_directory='${sqlPath(it)}'")
             }
-            add("INSTALL httpfs")
-            add("INSTALL iceberg")
-            add("LOAD httpfs")
-            add("LOAD iceberg")
+            add("SET autoinstall_known_extensions=false")
+            add("SET autoload_known_extensions=false")
+            EXTENSIONS.forEach { add("INSTALL $it") }
+            EXTENSIONS.forEach { add("LOAD $it") }
             add("CREATE OR REPLACE SECRET s3sec (TYPE s3, PROVIDER credential_chain, REGION '$region')")
-            add("SET memory_limit='512MB'")
+            add("SET memory_limit='${memoryLimit()}'")
             add("SET temp_directory='${sqlPath(tempDirectory())}'")
         }
+
+        private fun memoryLimit(): String =
+            System.getenv("DUCKDB_MEMORY_LIMIT")?.takeIf { it.isNotBlank() } ?: "512MB"
 
         private fun tempDirectory(): String {
             val path = Paths.get(System.getProperty("java.io.tmpdir"), "duckdb")

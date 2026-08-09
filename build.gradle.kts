@@ -9,6 +9,11 @@ kotlin {
     jvmToolchain(25)
 }
 
+// DuckDB 확장 설치용 main이 따로 있어 애플리케이션 진입점을 명시한다.
+springBoot {
+    mainClass.set("me.saramquantgateway.SaramquantGatewayApplicationKt")
+}
+
 dependencies {
     implementation("org.springframework.boot:spring-boot-starter-web")
     implementation("org.springframework.boot:spring-boot-starter-validation")

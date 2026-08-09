@@ -1,6 +1,7 @@
 package me.saramquantgateway.infra.duckdb
 
 import com.github.benmanes.caffeine.cache.Caffeine
+import com.github.benmanes.caffeine.cache.LoadingCache
 import software.amazon.awssdk.services.glue.GlueClient
 import software.amazon.awssdk.services.glue.model.GetTableRequest
 import java.time.Duration
@@ -12,12 +13,15 @@ class GlueLakeTableResolver(
     ttl: Duration = Duration.ofMinutes(5),
 ) : LakeTableResolver {
 
-    private val cache = Caffeine.newBuilder()
+    private val cache: LoadingCache<String, String> = Caffeine.newBuilder()
         .expireAfterWrite(ttl)
+        .refreshAfterWrite(ttl.dividedBy(2))
         .maximumSize(MAX_CACHED_TABLES)
-        .build<String, String>()
+        .build { resolve(it) }
 
-    override fun ref(table: String): String = cache.get(table) { resolve(it) }
+    override fun ref(table: String): String = cache.get(table)
+
+    override fun invalidateAll() = cache.invalidateAll()
 
     private fun resolve(table: String): String {
         val response = try {
@@ -29,7 +33,7 @@ class GlueLakeTableResolver(
         if (location.isNullOrBlank()) {
             throw IllegalStateException("Glue table '$database.$table' has no metadata_location parameter")
         }
-        return "iceberg_scan('$location')"
+        return "iceberg_scan('${location.replace("'", "''")}')"
     }
 
     private companion object {

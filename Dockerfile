@@ -15,14 +15,21 @@ RUN ./gradlew --no-daemon -x test bootJar
 FROM eclipse-temurin:25-jre
 WORKDIR /app
 
+# curl은 ECS 컨테이너 헬스체크가 사용한다.
+RUN apt-get update && apt-get install -y --no-install-recommends curl \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY --from=builder /app/build/libs/*.jar /app/app.jar
 
-# 확장 캐시 디렉토리는 호스트 볼륨으로 마운트되어 재기동 시 오프라인 로드된다.
+# DuckDB 확장은 빌드 시 설치·LOAD 검증까지 마쳐 런타임 네트워크 의존을 없앤다.
 ENV DUCKDB_EXT_DIR=/duckdb-ext
-RUN mkdir -p /duckdb-ext /tmp/duckdb
+RUN mkdir -p /duckdb-ext /tmp/duckdb \
+    && java -Dloader.main=me.saramquantgateway.infra.duckdb.DuckDbExtensionInstallerKt \
+       -cp /app/app.jar org.springframework.boot.loader.launch.PropertiesLauncher
 
 ENV PORT=8080
 EXPOSE 8080
 
-ENV JAVA_OPTS="-XX:+UseContainerSupport -XX:MaxRAMPercentage=75.0"
-ENTRYPOINT ["sh", "-c", "java ${JAVA_OPTS} -Dserver.port=${PORT} -jar /app/app.jar"]
+# 힙 640m + DuckDB 384MB + 네이티브 여유 ≈ 1280MB 컨테이너 한도에 맞춘 예산이다.
+ENV JAVA_OPTS="-XX:+UseContainerSupport -Xmx640m -XX:MaxMetaspaceSize=192m"
+ENTRYPOINT ["sh", "-c", "exec java ${JAVA_OPTS} -Dserver.port=${PORT} -jar /app/app.jar"]
