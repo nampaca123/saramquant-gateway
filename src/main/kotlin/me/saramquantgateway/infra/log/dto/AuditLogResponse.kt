@@ -1,6 +1,6 @@
 package me.saramquantgateway.infra.log.dto
 
-import me.saramquantgateway.infra.log.entity.AuditLog
+import me.saramquantgateway.domain.document.AuditLogDoc
 import java.time.Instant
 import java.util.UUID
 
@@ -11,6 +11,7 @@ data class AuditLogResponse(
     val method: String?,
     val path: String?,
     val ipGeolocationId: UUID?,
+    val ipMasked: String?,
     val userId: UUID?,
     val statusCode: Int?,
     val durationMs: Long?,
@@ -18,18 +19,20 @@ data class AuditLogResponse(
     val createdAt: Instant,
 ) {
     companion object {
-        fun from(e: AuditLog) = AuditLogResponse(
-            id = e.id,
-            server = e.server,
-            action = e.action,
-            method = e.method,
-            path = e.path,
-            ipGeolocationId = e.ipGeolocationId,
-            userId = e.userId,
-            statusCode = e.statusCode,
-            durationMs = e.durationMs,
-            metadata = e.metadata,
-            createdAt = e.createdAt,
+        // ipGeolocationId는 geolocation 제거 후에도 응답 형태 유지를 위해 null로 고정한다.
+        fun from(doc: AuditLogDoc) = AuditLogResponse(
+            id = doc.id,
+            server = doc.server,
+            action = doc.action,
+            method = doc.method,
+            path = doc.path,
+            ipGeolocationId = null,
+            ipMasked = doc.ipMasked,
+            userId = doc.userId,
+            statusCode = doc.statusCode,
+            durationMs = doc.durationMs,
+            metadata = doc.metadata,
+            createdAt = doc.createdAt,
         )
     }
 }

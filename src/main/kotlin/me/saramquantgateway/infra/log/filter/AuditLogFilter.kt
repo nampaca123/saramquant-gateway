@@ -3,10 +3,10 @@ package me.saramquantgateway.infra.log.filter
 import jakarta.servlet.FilterChain
 import jakarta.servlet.http.HttpServletRequest
 import jakarta.servlet.http.HttpServletResponse
-import me.saramquantgateway.infra.log.entity.AuditLog
-import me.saramquantgateway.infra.log.repository.AuditLogRepository
-import me.saramquantgateway.infra.log.service.IpGeolocationService
+import me.saramquantgateway.domain.document.AuditLogDoc
+import me.saramquantgateway.domain.store.AuditLogStore
 import me.saramquantgateway.infra.log.util.ClientIpExtractor
+import me.saramquantgateway.infra.log.util.IpMasker
 import org.slf4j.LoggerFactory
 import org.springframework.context.ApplicationEventPublisher
 import org.springframework.context.event.EventListener
@@ -64,8 +64,7 @@ class AuditLogFilter(
 
 @Component
 class AuditEventListener(
-    private val auditLogRepo: AuditLogRepository,
-    private val ipGeoService: IpGeolocationService,
+    private val auditLogStore: AuditLogStore,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
 
@@ -73,20 +72,18 @@ class AuditEventListener(
     @EventListener
     fun handle(event: AuditEvent) {
         try {
-            val geoId = ipGeoService.resolveId(event.ip)
-            val saved = auditLogRepo.save(
-                AuditLog(
+            auditLogStore.append(
+                AuditLogDoc(
                     server = "gateway",
                     action = "API",
                     method = event.method,
                     path = event.path,
-                    ipGeolocationId = geoId,
+                    ipMasked = event.ip.takeIf { it.isNotBlank() && it != "unknown" }?.let(IpMasker::mask),
                     userId = event.userId,
                     statusCode = event.statusCode,
                     durationMs = event.durationMs,
                 )
             )
-            ipGeoService.resolveAndBackfill(event.ip, saved.id)
         } catch (e: Exception) {
             log.warn("[AuditLog] failed to record: {}", e.message)
         }

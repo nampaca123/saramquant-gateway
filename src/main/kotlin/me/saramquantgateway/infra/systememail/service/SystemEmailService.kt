@@ -1,11 +1,11 @@
 package me.saramquantgateway.infra.systememail.service
 
 import com.fasterxml.jackson.databind.ObjectMapper
+import me.saramquantgateway.domain.document.AuditLogDoc
 import me.saramquantgateway.domain.document.UserDoc
+import me.saramquantgateway.domain.store.AuditLogStore
 import me.saramquantgateway.infra.systememail.util.EmailTemplateRenderer
 import me.saramquantgateway.infra.aws.lib.AwsSesClient
-import me.saramquantgateway.infra.log.entity.AuditLog
-import me.saramquantgateway.infra.log.repository.AuditLogRepository
 import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Async
 import org.springframework.stereotype.Service
@@ -17,7 +17,7 @@ import java.time.format.DateTimeFormatter
 class SystemEmailService(
     private val sesClient: AwsSesClient,
     private val renderer: EmailTemplateRenderer,
-    private val auditLogRepo: AuditLogRepository,
+    private val auditLogStore: AuditLogStore,
     private val objectMapper: ObjectMapper,
 ) {
     private val log = LoggerFactory.getLogger(javaClass)
@@ -97,8 +97,8 @@ class SystemEmailService(
     private fun recordAudit(emailType: String, recipient: String, userId: java.util.UUID) {
         try {
             val metadata = objectMapper.writeValueAsString(mapOf("type" to emailType, "recipient" to recipient))
-            auditLogRepo.save(
-                AuditLog(server = "gateway", action = "EMAIL", userId = userId, metadata = metadata)
+            auditLogStore.append(
+                AuditLogDoc(server = "gateway", action = "EMAIL", userId = userId, metadata = metadata)
             )
         } catch (e: Exception) {
             log.warn("[SystemEmail] Audit log failed for {}: {}", emailType, e.message)
