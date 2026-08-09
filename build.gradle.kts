@@ -33,6 +33,9 @@ dependencies {
     implementation("org.springframework.boot:spring-boot-starter-thymeleaf")
     implementation(platform("software.amazon.awssdk:bom:2.34.0"))
     implementation("software.amazon.awssdk:sesv2")
+    implementation("software.amazon.awssdk:s3")
+    implementation("software.amazon.awssdk:glue")
+    implementation("org.duckdb:duckdb_jdbc:1.4.4.0")
 
     testImplementation("org.springframework.boot:spring-boot-starter-test")
 
