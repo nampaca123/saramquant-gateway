@@ -2,9 +2,8 @@ package me.saramquantgateway.feature.home.service
 
 import me.saramquantgateway.domain.enum.market.Benchmark
 import me.saramquantgateway.domain.repository.market.BenchmarkDailyPriceRepository
-import me.saramquantgateway.domain.repository.portfolio.PortfolioHoldingRepository
-import me.saramquantgateway.domain.repository.portfolio.UserPortfolioRepository
 import me.saramquantgateway.domain.repository.riskbadge.RiskBadgeRepository
+import me.saramquantgateway.domain.store.PortfolioStore
 import me.saramquantgateway.feature.home.dto.*
 import me.saramquantgateway.feature.portfolio.dto.PortfolioSummary
 import org.springframework.stereotype.Service
@@ -16,8 +15,7 @@ import java.util.UUID
 class HomeService(
     private val benchmarkRepo: BenchmarkDailyPriceRepository,
     private val badgeRepo: RiskBadgeRepository,
-    private val portfolioRepo: UserPortfolioRepository,
-    private val holdingRepo: PortfolioHoldingRepository,
+    private val portfolioStore: PortfolioStore,
 ) {
 
     fun summary(userId: UUID?): HomeSummary {
@@ -64,11 +62,11 @@ class HomeService(
     }
 
     private fun buildPortfolioSummaries(userId: UUID): List<PortfolioSummary> =
-        portfolioRepo.findByUserId(userId).map { p ->
+        portfolioStore.findByUserId(userId)?.portfolios.orEmpty().map { p ->
             PortfolioSummary(
                 id = p.id,
                 marketGroup = p.marketGroup,
-                holdingsCount = holdingRepo.countByPortfolioId(p.id).toInt(),
+                holdingsCount = p.holdings.size,
                 createdAt = p.createdAt,
             )
         }

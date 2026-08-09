@@ -1,5 +1,6 @@
 package me.saramquantgateway.feature.llm.service
 
+import me.saramquantgateway.domain.document.HoldingEntry
 import me.saramquantgateway.domain.entity.llm.PortfolioLlmAnalysis
 import me.saramquantgateway.domain.enum.market.Country
 import me.saramquantgateway.domain.enum.market.Maturity
@@ -8,7 +9,6 @@ import me.saramquantgateway.domain.repository.indicator.StockIndicatorRepository
 import me.saramquantgateway.domain.repository.llm.PortfolioLlmAnalysisRepository
 import me.saramquantgateway.domain.repository.market.RiskFreeRateRepository
 import me.saramquantgateway.domain.repository.market.SectorAggregateRepository
-import me.saramquantgateway.domain.repository.portfolio.PortfolioHoldingRepository
 import me.saramquantgateway.domain.repository.riskbadge.RiskBadgeRepository
 import me.saramquantgateway.domain.repository.stock.StockRepository
 import me.saramquantgateway.feature.llm.dto.LlmAnalysisResponse
@@ -30,7 +30,6 @@ import java.util.concurrent.TimeUnit
 @Service
 class PortfolioLlmService(
     private val portfolioService: PortfolioService,
-    private val holdingRepo: PortfolioHoldingRepository,
     private val stockRepo: StockRepository,
     private val indicatorRepo: StockIndicatorRepository,
     private val fundamentalRepo: StockFundamentalRepository,
@@ -47,8 +46,7 @@ class PortfolioLlmService(
     private val inFlight = ConcurrentHashMap<String, CompletableFuture<String>>()
 
     fun analyze(portfolioId: Long, userId: UUID, preset: String, lang: String): LlmAnalysisResponse {
-        val portfolio = portfolioService.verifyOwnership(portfolioId, userId)
-        val holdings = holdingRepo.findByPortfolioId(portfolioId)
+        val holdings = portfolioService.verifyOwnership(portfolioId, userId).holdings.toList()
         if (holdings.isEmpty()) {
             return LlmAnalysisResponse(
                 analysis = if (lang == "en") "No holdings in this portfolio." else "포트폴리오에 보유 종목이 없습니다.",
@@ -78,7 +76,7 @@ class PortfolioLlmService(
 
     private fun generateAndCache(
         portfolioId: Long,
-        holdings: List<me.saramquantgateway.domain.entity.portfolio.PortfolioHolding>,
+        holdings: List<HoldingEntry>,
         today: LocalDate,
         preset: String,
         lang: String,
@@ -102,7 +100,7 @@ class PortfolioLlmService(
 
     private fun buildContextData(
         portfolioId: Long,
-        holdings: List<me.saramquantgateway.domain.entity.portfolio.PortfolioHolding>,
+        holdings: List<HoldingEntry>,
         preset: String,
         lang: String,
     ): PortfolioContextData {
