@@ -1,4 +1,4 @@
-FROM eclipse-temurin:25-jdk AS builder
+FROM --platform=$BUILDPLATFORM eclipse-temurin:25-jdk AS builder
 WORKDIR /app
 
 COPY gradlew .
@@ -16,6 +16,10 @@ FROM eclipse-temurin:25-jre
 WORKDIR /app
 
 COPY --from=builder /app/build/libs/*.jar /app/app.jar
+
+# 확장 캐시 디렉토리는 호스트 볼륨으로 마운트되어 재기동 시 오프라인 로드된다.
+ENV DUCKDB_EXT_DIR=/duckdb-ext
+RUN mkdir -p /duckdb-ext /tmp/duckdb
 
 ENV PORT=8080
 EXPOSE 8080
