@@ -1,0 +1,149 @@
+name: deploy
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# 공유 S3 state 락 충돌 방지 — 진행 중 apply는 절대 취소하지 않는다
+concurrency:
+  group: terraform-state-gateway
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+    env:
+      AWS_REGION: ap-northeast-2
+      ECR_REPO: saramquant-gateway
+      TF_PLUGIN_CACHE_DIR: ${{ github.workspace }}/.terraform-plugin-cache
+      TF_VAR_region: ap-northeast-2
+      TF_VAR_caddy_domain: ${{ vars.CADDY_DOMAIN }}
+      TF_VAR_s3_bucket_name: ${{ vars.SARAMQUANT_S3_BUCKET_NAME }}
+      TF_VAR_glue_database: ${{ vars.GLUE_DATABASE }}
+      TF_VAR_google_oauth_client_id: ${{ vars.GOOGLE_OAUTH_CLIENT_ID }}
+      TF_VAR_google_oauth_redirect_uri: ${{ vars.GOOGLE_OAUTH_REDIRECT_URI }}
+      TF_VAR_kakao_oauth_rest_key: ${{ vars.KAKAO_OAUTH_REST_KEY }}
+      TF_VAR_kakao_oauth_redirect_uri: ${{ vars.KAKAO_OAUTH_REDIRECT_URI }}
+      TF_VAR_jwt_public_key_base64: ${{ vars.JWT_PUBLIC_KEY_BASE64 }}
+      TF_VAR_jwt_access_token_ttl: ${{ vars.JWT_ACCESS_TOKEN_TTL }}
+      TF_VAR_jwt_refresh_token_ttl: ${{ vars.JWT_REFRESH_TOKEN_TTL }}
+      TF_VAR_cookie_secure: ${{ vars.COOKIE_SECURE }}
+      TF_VAR_frontend_redirect_url: ${{ vars.FRONTEND_REDIRECT_URL }}
+      TF_VAR_cors_allowed_origin: ${{ vars.CORS_ALLOWED_ORIGIN }}
+      TF_VAR_calc_server_url: ${{ vars.CALC_SERVER_URL }}
+      TF_VAR_aws_ses_region: ${{ vars.AWS_SES_REGION }}
+      TF_VAR_aws_ses_sender_email: ${{ vars.AWS_SES_SENDER_EMAIL }}
+      TF_VAR_google_oauth_client_secret: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+      TF_VAR_kakao_oauth_login_secret: ${{ secrets.KAKAO_OAUTH_LOGIN_SECRET }}
+      TF_VAR_jwt_private_key_base64: ${{ secrets.JWT_PRIVATE_KEY_BASE64 }}
+      TF_VAR_hash_secret: ${{ secrets.HASH_SECRET }}
+      TF_VAR_gateway_auth_key: ${{ secrets.GATEWAY_AUTH_KEY }}
+      TF_VAR_calc_auth_key: ${{ secrets.CALC_AUTH_KEY }}
+      TF_VAR_claude_api_key: ${{ secrets.CLAUDE_API_KEY }}
+      TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+      TF_VAR_aws_ses_access_key: ${{ secrets.AWS_SES_ACCESS_KEY }}
+      TF_VAR_aws_ses_secret_key: ${{ secrets.AWS_SES_SECRET_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "25"
+          cache: gradle
+
+      # S3/Glue 통합 테스트는 SARAMQUANT_IAM_KEY_*가 있어야 실행된다(없으면 조용히 스킵)
+      - name: Gradle test
+        working-directory: ${{ github.workspace }}
+        env:
+          SARAMQUANT_IAM_KEY_ACCESS: ${{ secrets.SARAMQUANT_IAM_KEY_ACCESS }}
+          SARAMQUANT_IAM_KEY_SECRET: ${{ secrets.SARAMQUANT_IAM_KEY_SECRET }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.SARAMQUANT_IAM_KEY_ACCESS }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.SARAMQUANT_IAM_KEY_SECRET }}
+          SARAMQUANT_S3_BUCKET_NAME: ${{ vars.SARAMQUANT_S3_BUCKET_NAME }}
+          GLUE_DATABASE: ${{ vars.GLUE_DATABASE }}
+        run: ./gradlew --no-daemon test
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Cache Terraform providers
+        uses: actions/cache@v4
+        with:
+          path: ${{ github.workspace }}/.terraform-plugin-cache
+          key: terraform-plugins-${{ hashFiles('infra/.terraform.lock.hcl') }}
+          restore-keys: terraform-plugins-
+
+      - name: Terraform check (fmt + validate)
+        working-directory: ${{ github.workspace }}
+        run: mkdir -p "$TF_PLUGIN_CACHE_DIR" && make check
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.SARAMQUANT_IAM_KEY_ACCESS }}
+          aws-secret-access-key: ${{ secrets.SARAMQUANT_IAM_KEY_SECRET }}
+          aws-region: ap-northeast-2
+
+      - name: Verify identity
+        run: aws sts get-caller-identity
+
+      # Dockerfile만 해싱하면 src 변경이 태그에 안 잡혀 새 코드가 영구 미배포된다
+      - name: Compute image tag
+        run: |
+          TAG=$(echo "${{ hashFiles('Dockerfile', 'build.gradle.kts', 'settings.gradle.kts', 'src/**') }}" | cut -c1-12)
+          echo "IMAGE_TAG=$TAG" >> "$GITHUB_ENV"
+          echo "TF_VAR_image_tag=$TAG" >> "$GITHUB_ENV"
+
+      - name: Terraform init
+        run: ./tf init -input=false
+
+      # ECS 태스크 정의가 이미지 URI를 참조하므로 리포지토리만 먼저 만들고 이미지를 밀어넣는다
+      - name: Terraform apply (ECR repo only)
+        if: github.event_name == 'push'
+        run: ./tf apply -input=false -auto-approve -target=aws_ecr_repository.gateway
+
+      - name: Set up QEMU
+        if: github.event_name == 'push'
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Buildx
+        if: github.event_name == 'push'
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build & push gateway image (ECR)
+        if: github.event_name == 'push'
+        working-directory: ${{ github.workspace }}
+        run: |
+          ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+          REGISTRY="$ACCOUNT.dkr.ecr.$AWS_REGION.amazonaws.com"
+          if aws ecr describe-images --repository-name "$ECR_REPO" --image-ids imageTag="$IMAGE_TAG" >/dev/null 2>&1; then
+            echo "image $IMAGE_TAG already pushed, skipping build"
+            exit 0
+          fi
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | docker login --username AWS --password-stdin "$REGISTRY"
+          docker buildx build --platform linux/arm64 --push \
+            -t "$REGISTRY/$ECR_REPO:$IMAGE_TAG" .
+
+      - name: Terraform plan
+        run: ./tf plan -input=false -out=tfplan
+
+      - name: Terraform apply
+        if: github.event_name == 'push'
+        run: ./tf apply -input=false tfplan
+
+      - name: Publish EIP
+        if: github.event_name == 'push'
+        run: |
+          IP=$(./tf output -raw eip_public_ip)
+          echo "### Gateway EIP" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`$IP\` — point the api.saramquant.com A record here." >> "$GITHUB_STEP_SUMMARY"
