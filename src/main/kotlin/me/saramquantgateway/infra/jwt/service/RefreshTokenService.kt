@@ -1,28 +1,29 @@
 package me.saramquantgateway.infra.jwt.service
 
-import me.saramquantgateway.domain.entity.auth.RefreshToken
-import me.saramquantgateway.domain.repository.auth.RefreshTokenRepository
+import me.saramquantgateway.domain.document.RefreshTokenDoc
+import me.saramquantgateway.domain.store.RefreshTokenStore
 import me.saramquantgateway.infra.jwt.lib.JwtProvider
+import org.slf4j.LoggerFactory
 import org.springframework.scheduling.annotation.Scheduled
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
 import java.security.MessageDigest
 import java.time.Instant
 import java.util.UUID
 
 @Service
 class RefreshTokenService(
-    private val repo: RefreshTokenRepository,
+    private val store: RefreshTokenStore,
     private val jwtProvider: JwtProvider,
 ) {
+    private val log = LoggerFactory.getLogger(javaClass)
+
     companion object {
         private const val GRACE_PERIOD_SECONDS = 10L
     }
 
-    @Transactional
     fun save(userId: UUID, rawToken: String) {
-        repo.save(
-            RefreshToken(
+        store.save(
+            RefreshTokenDoc(
                 userId = userId,
                 tokenHash = hash(rawToken),
                 expiresAt = jwtProvider.validateToken(rawToken)
@@ -32,13 +33,12 @@ class RefreshTokenService(
         )
     }
 
-    @Transactional
     fun rotate(rawToken: String): String {
         val claims = jwtProvider.validateToken(rawToken)
             ?: throw InvalidRefreshTokenException()
 
         val userId = UUID.fromString(claims.subject)
-        val existing = repo.findByTokenHash(hash(rawToken))
+        val existing = store.findByTokenHash(hash(rawToken))
             ?: throw InvalidRefreshTokenException()
 
         if (existing.revokedAt != null) {
@@ -47,33 +47,46 @@ class RefreshTokenService(
                 return findLatestActiveToken(userId)
                     ?: issueNew(userId)
             }
-            repo.revokeAllByUserId(userId)
+            store.revokeAllByUserId(userId, Instant.now())
             throw TokenReusedException()
         }
 
         existing.revokedAt = Instant.now()
-        repo.save(existing)
+        store.save(existing)
         return issueNew(userId)
     }
 
-    @Transactional
     fun revoke(rawToken: String) {
-        repo.findByTokenHash(hash(rawToken))?.let {
+        store.findByTokenHash(hash(rawToken))?.let {
             if (it.revokedAt == null) {
                 it.revokedAt = Instant.now()
-                repo.save(it)
+                store.save(it)
             }
         }
     }
 
-    @Transactional
     fun revokeAll(userId: UUID) {
-        repo.revokeAllByUserId(userId)
+        store.revokeAllByUserId(userId, Instant.now())
     }
 
+    // 실행 1건당 구조화 로그 1줄을 try/finally로 남긴다.
     @Scheduled(fixedRate = 3_600_000)
-    @Transactional
-    fun cleanupExpired(): Int = repo.deleteExpired()
+    fun cleanupExpired(): Int {
+        val runId = UUID.randomUUID().toString()
+        val startedAt = System.currentTimeMillis()
+        var deleted = 0
+        var status = "error"
+        try {
+            deleted = store.deleteExpired(Instant.now())
+            status = "ok"
+            return deleted
+        } finally {
+            log.info(
+                """{"event":"refresh_token_cleanup","run_id":"%s","status":"%s","deleted":%d,"duration_ms":%d}"""
+                    .format(runId, status, deleted, System.currentTimeMillis() - startedAt),
+            )
+        }
+    }
 
     private fun issueNew(userId: UUID): String {
         val newToken = jwtProvider.generateRefreshToken(userId)

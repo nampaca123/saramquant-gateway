@@ -1,6 +1,6 @@
 package me.saramquantgateway.feature.recommendation.service
 
-import me.saramquantgateway.domain.entity.user.UserProfile
+import me.saramquantgateway.domain.document.UserDoc
 import me.saramquantgateway.domain.enum.recommendation.RecommendationDirection
 import me.saramquantgateway.domain.enum.recommendation.RecommendationDirection.*
 import me.saramquantgateway.domain.enum.user.InvestmentExperience.*
@@ -15,7 +15,7 @@ object RecommendationPrompts {
         portfolio: PortfolioDetail,
         lang: String,
         direction: RecommendationDirection,
-        profile: UserProfile?,
+        profile: UserDoc?,
         precomputed: RecommendationContextBuilder.PrecomputedContext?,
         availableSectors: List<String> = emptyList(),
     ): String {
@@ -95,7 +95,7 @@ object RecommendationPrompts {
                   else "요청 방향: 성장 가능성을 우선해 주세요."
     }
 
-    private fun profileContext(profile: UserProfile?, lang: String): String? {
+    private fun profileContext(profile: UserDoc?, lang: String): String? {
         if (profile == null) return null
         val ageGroup = profile.birthYear?.let { "${(LocalDate.now().year - it) / 10 * 10}대" } ?: "미상"
         val expLabel = when (profile.investmentExperience) {

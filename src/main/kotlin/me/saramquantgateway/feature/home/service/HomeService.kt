@@ -1,10 +1,9 @@
 package me.saramquantgateway.feature.home.service
 
 import me.saramquantgateway.domain.enum.market.Benchmark
-import me.saramquantgateway.domain.repository.market.BenchmarkDailyPriceRepository
-import me.saramquantgateway.domain.repository.portfolio.PortfolioHoldingRepository
-import me.saramquantgateway.domain.repository.portfolio.UserPortfolioRepository
-import me.saramquantgateway.domain.repository.riskbadge.RiskBadgeRepository
+import me.saramquantgateway.domain.lake.PriceLakeDao
+import me.saramquantgateway.domain.lake.RiskBadgeLakeDao
+import me.saramquantgateway.domain.store.PortfolioStore
 import me.saramquantgateway.feature.home.dto.*
 import me.saramquantgateway.feature.portfolio.dto.PortfolioSummary
 import org.springframework.stereotype.Service
@@ -14,10 +13,9 @@ import java.util.UUID
 
 @Service
 class HomeService(
-    private val benchmarkRepo: BenchmarkDailyPriceRepository,
-    private val badgeRepo: RiskBadgeRepository,
-    private val portfolioRepo: UserPortfolioRepository,
-    private val holdingRepo: PortfolioHoldingRepository,
+    private val priceDao: PriceLakeDao,
+    private val badgeDao: RiskBadgeLakeDao,
+    private val portfolioStore: PortfolioStore,
 ) {
 
     fun summary(userId: UUID?): HomeSummary {
@@ -28,7 +26,7 @@ class HomeService(
     }
 
     private fun buildBenchmarkSummary(benchmark: Benchmark): BenchmarkSummary {
-        val prices = benchmarkRepo.findTop2ByBenchmarkOrderByDateDesc(benchmark)
+        val prices = priceDao.findTop2Benchmark(benchmark)
         val latest = prices.firstOrNull()
         val previous = prices.getOrNull(1)
 
@@ -49,13 +47,8 @@ class HomeService(
     }
 
     private fun buildMarketOverview(): MarketOverview {
-        val rows = badgeRepo.countByMarketAndTier()
-        val distribution = rows.map { row ->
-            MarketTierCount(
-                market = row[0].toString(),
-                tier = row[1].toString(),
-                count = (row[2] as Number).toInt(),
-            )
+        val distribution = badgeDao.countByMarketAndTier().map { row ->
+            MarketTierCount(market = row.market, tier = row.summaryTier, count = row.count.toInt())
         }
         return MarketOverview(
             tierDistribution = distribution,
@@ -64,11 +57,11 @@ class HomeService(
     }
 
     private fun buildPortfolioSummaries(userId: UUID): List<PortfolioSummary> =
-        portfolioRepo.findByUserId(userId).map { p ->
+        portfolioStore.findByUserId(userId)?.portfolios.orEmpty().map { p ->
             PortfolioSummary(
                 id = p.id,
                 marketGroup = p.marketGroup,
-                holdingsCount = holdingRepo.countByPortfolioId(p.id).toInt(),
+                holdingsCount = p.holdings.size,
                 createdAt = p.createdAt,
             )
         }

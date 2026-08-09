@@ -1,23 +1,23 @@
 package me.saramquantgateway.feature.llm.service
 
-import me.saramquantgateway.domain.entity.llm.PortfolioLlmAnalysis
+import me.saramquantgateway.domain.document.HoldingEntry
+import me.saramquantgateway.domain.document.LlmAnalysisDoc
 import me.saramquantgateway.domain.enum.market.Country
 import me.saramquantgateway.domain.enum.market.Maturity
-import me.saramquantgateway.domain.repository.fundamental.StockFundamentalRepository
-import me.saramquantgateway.domain.repository.indicator.StockIndicatorRepository
-import me.saramquantgateway.domain.repository.llm.PortfolioLlmAnalysisRepository
-import me.saramquantgateway.domain.repository.market.RiskFreeRateRepository
-import me.saramquantgateway.domain.repository.market.SectorAggregateRepository
-import me.saramquantgateway.domain.repository.portfolio.PortfolioHoldingRepository
-import me.saramquantgateway.domain.repository.riskbadge.RiskBadgeRepository
-import me.saramquantgateway.domain.repository.stock.StockRepository
+import me.saramquantgateway.domain.lake.FundamentalLakeDao
+import me.saramquantgateway.domain.lake.IndicatorLakeDao
+import me.saramquantgateway.domain.lake.MarketRefLakeDao
+import me.saramquantgateway.domain.lake.RiskBadgeLakeDao
+import me.saramquantgateway.domain.lake.SectorLakeDao
+import me.saramquantgateway.domain.lake.StockLakeDao
+import me.saramquantgateway.domain.store.LlmCacheStore
 import me.saramquantgateway.feature.llm.dto.LlmAnalysisResponse
+import me.saramquantgateway.feature.portfolio.service.CalcPortfolioRequestBuilder
 import me.saramquantgateway.feature.portfolio.service.PortfolioService
 import me.saramquantgateway.infra.llm.config.LlmProperties
 import me.saramquantgateway.infra.llm.lib.LlmRouter
 import me.saramquantgateway.infra.connection.CalcServerClient
 import org.springframework.beans.factory.annotation.Qualifier
-import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
 import java.time.LocalDate
@@ -30,15 +30,15 @@ import java.util.concurrent.TimeUnit
 @Service
 class PortfolioLlmService(
     private val portfolioService: PortfolioService,
-    private val holdingRepo: PortfolioHoldingRepository,
-    private val stockRepo: StockRepository,
-    private val indicatorRepo: StockIndicatorRepository,
-    private val fundamentalRepo: StockFundamentalRepository,
-    private val badgeRepo: RiskBadgeRepository,
-    private val sectorAggRepo: SectorAggregateRepository,
-    private val riskFreeRateRepo: RiskFreeRateRepository,
-    private val analysisRepo: PortfolioLlmAnalysisRepository,
+    private val stockDao: StockLakeDao,
+    private val indicatorDao: IndicatorLakeDao,
+    private val fundamentalDao: FundamentalLakeDao,
+    private val badgeDao: RiskBadgeLakeDao,
+    private val sectorAggDao: SectorLakeDao,
+    private val marketRefDao: MarketRefLakeDao,
+    private val cacheStore: LlmCacheStore,
     private val calcClient: CalcServerClient,
+    private val calcRequestBuilder: CalcPortfolioRequestBuilder,
     private val promptBuilder: PromptBuilder,
     private val llmRouter: LlmRouter,
     private val props: LlmProperties,
@@ -48,7 +48,7 @@ class PortfolioLlmService(
 
     fun analyze(portfolioId: Long, userId: UUID, preset: String, lang: String): LlmAnalysisResponse {
         val portfolio = portfolioService.verifyOwnership(portfolioId, userId)
-        val holdings = holdingRepo.findByPortfolioId(portfolioId)
+        val holdings = portfolio.holdings.toList()
         if (holdings.isEmpty()) {
             return LlmAnalysisResponse(
                 analysis = if (lang == "en") "No holdings in this portfolio." else "포트폴리오에 보유 종목이 없습니다.",
@@ -59,13 +59,16 @@ class PortfolioLlmService(
 
         val today = LocalDate.now()
 
-        analysisRepo.findByPortfolioIdAndDateAndPresetAndLang(portfolioId, today, preset, lang)?.let {
+        cacheStore.findPortfolio(portfolioId, today, preset, lang)?.let {
             return LlmAnalysisResponse(it.analysis, it.model, true, LlmAnalysisResponse.disclaimer(lang))
         }
 
         val cacheKey = "$portfolioId:$today:$preset:$lang"
         val future = inFlight.computeIfAbsent(cacheKey) {
-            CompletableFuture.supplyAsync({ generateAndCache(portfolioId, holdings, today, preset, lang) }, llmExecutor)
+            CompletableFuture.supplyAsync(
+                { generateAndCache(portfolioId, portfolio.marketGroup, holdings, today, preset, lang) },
+                llmExecutor,
+            )
         }
 
         try {
@@ -78,39 +81,36 @@ class PortfolioLlmService(
 
     private fun generateAndCache(
         portfolioId: Long,
-        holdings: List<me.saramquantgateway.domain.entity.portfolio.PortfolioHolding>,
+        marketGroup: String,
+        holdings: List<HoldingEntry>,
         today: LocalDate,
         preset: String,
         lang: String,
     ): String {
-        val data = buildContextData(portfolioId, holdings, preset, lang)
+        val data = buildContextData(marketGroup, holdings, preset, lang)
         val (system, user) = promptBuilder.buildPortfolioPrompt(data, preset, lang)
         val result = llmRouter.complete(props.portfolioModel, system, user)
 
-        try {
-            analysisRepo.save(
-                PortfolioLlmAnalysis(
-                    portfolioId = portfolioId, date = today, preset = preset, lang = lang,
-                    analysis = result, model = props.portfolioModel,
-                )
+        cacheStore.savePortfolio(
+            LlmAnalysisDoc(
+                targetId = portfolioId, date = today, preset = preset, lang = lang,
+                analysis = result, model = props.portfolioModel,
             )
-        } catch (_: DataIntegrityViolationException) {
-            // race condition: 동시 요청이 먼저 INSERT 완료한 경우 → 무시하고 결과만 반환
-        }
+        )
         return result
     }
 
     private fun buildContextData(
-        portfolioId: Long,
-        holdings: List<me.saramquantgateway.domain.entity.portfolio.PortfolioHolding>,
+        marketGroup: String,
+        holdings: List<HoldingEntry>,
         preset: String,
         lang: String,
     ): PortfolioContextData {
         val stockIds = holdings.map { it.stockId }
-        val stockMap = stockRepo.findByIdIn(stockIds).associateBy { it.id }
-        val indicatorMap = indicatorRepo.findLatestByStockIds(stockIds).associateBy { it.stockId }
-        val fundamentalMap = fundamentalRepo.findLatestByStockIds(stockIds).associateBy { it.stockId }
-        val badgeMap = badgeRepo.findByStockIdIn(stockIds).associateBy { it.stockId }
+        val stockMap = stockDao.findByIds(stockIds).associateBy { it.id }
+        val indicatorMap = indicatorDao.findLatestByStockIds(stockIds).associateBy { it.stockId }
+        val fundamentalMap = fundamentalDao.findLatestByStockIds(stockIds).associateBy { it.stockId }
+        val badgeMap = badgeDao.findByStockIds(stockIds).associateBy { it.stockId }
 
         val totalValue = holdings.sumOf { it.shares.multiply(it.avgPrice).toDouble() }
         val needFundamentals = preset in setOf("financial_weakness", "aggressive")
@@ -123,7 +123,7 @@ class PortfolioLlmService(
             val weight = if (totalValue > 0) h.shares.multiply(h.avgPrice).toDouble() / totalValue * 100.0 else 0.0
 
             val sectorAgg = if (needFundamentals && stock.sector != null)
-                sectorAggRepo.findTop1ByMarketAndSectorOrderByDateDesc(stock.market, stock.sector)
+                sectorAggDao.findLatestByMarketAndSector(stock.market, stock.sector)
             else null
 
             HoldingContext(
@@ -139,11 +139,14 @@ class PortfolioLlmService(
             )
         }
 
-        val analysis = calcClient.post("/internal/portfolios/full-analysis", mapOf("portfolio_id" to portfolioId))
+        val analysis = calcClient.post(
+            "/internal/portfolios/full-analysis",
+            calcRequestBuilder.build(marketGroup, holdings),
+        )
 
         val firstStock = stockMap.values.firstOrNull()
         val country = firstStock?.let { Country.forMarket(it.market) } ?: Country.KR
-        val riskFreeRate = riskFreeRateRepo.findTop1ByCountryAndMaturityOrderByDateDesc(country, Maturity.Y1)?.rate
+        val riskFreeRate = marketRefDao.findLatestRiskFreeRate(country, Maturity.Y1)?.rate
         val benchmark = if (country == Country.KR) "KOSPI" else "S&P500"
 
         @Suppress("UNCHECKED_CAST")

@@ -1,18 +1,17 @@
 package me.saramquantgateway.feature.portfolio.service
 
-import me.saramquantgateway.domain.entity.portfolio.PortfolioHolding
-import me.saramquantgateway.domain.entity.portfolio.UserPortfolio
-import me.saramquantgateway.domain.repository.portfolio.PortfolioHoldingRepository
-import me.saramquantgateway.domain.repository.portfolio.UserPortfolioRepository
-import me.saramquantgateway.domain.repository.riskbadge.RiskBadgeRepository
-import me.saramquantgateway.domain.repository.stock.DailyPriceRepository
-import me.saramquantgateway.domain.repository.stock.StockRepository
+import me.saramquantgateway.domain.document.HoldingEntry
+import me.saramquantgateway.domain.document.PortfolioDoc
+import me.saramquantgateway.domain.document.PortfolioEntry
+import me.saramquantgateway.domain.enum.portfolio.MarketGroup
+import me.saramquantgateway.domain.lake.PriceLakeDao
+import me.saramquantgateway.domain.lake.RiskBadgeLakeDao
+import me.saramquantgateway.domain.lake.StockLakeDao
+import me.saramquantgateway.domain.store.PortfolioStore
 import me.saramquantgateway.feature.portfolio.dto.*
 import me.saramquantgateway.infra.connection.CalcServerClient
-import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
 import org.springframework.web.server.ResponseStatusException
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -21,30 +20,28 @@ import java.util.UUID
 
 @Service
 class PortfolioService(
-    private val portfolioRepo: UserPortfolioRepository,
-    private val holdingRepo: PortfolioHoldingRepository,
-    private val stockRepo: StockRepository,
-    private val riskBadgeRepo: RiskBadgeRepository,
-    private val priceRepo: DailyPriceRepository,
+    private val portfolioStore: PortfolioStore,
+    private val stockDao: StockLakeDao,
+    private val riskBadgeDao: RiskBadgeLakeDao,
+    private val priceDao: PriceLakeDao,
     private val calcClient: CalcServerClient,
 ) {
 
-    fun getPortfolios(userId: UUID): List<PortfolioSummary> {
-        ensurePortfoliosExist(userId)
-        return portfolioRepo.findByUserId(userId).map { it.toSummary() }
-    }
+    fun getPortfolios(userId: UUID): List<PortfolioSummary> =
+        ensurePortfoliosExist(userId).portfolios.map { it.toSummary() }
 
     fun getPortfolioDetail(portfolioId: Long, userId: UUID): PortfolioDetail {
         val portfolio = verifyOwnership(portfolioId, userId)
-        val holdings = holdingRepo.findByPortfolioId(portfolioId)
+        val holdings = portfolio.holdings.toList()
         if (holdings.isEmpty()) {
             return PortfolioDetail(portfolio.id, portfolio.marketGroup, emptyList(), portfolio.createdAt)
         }
 
         val stockIds = holdings.map { it.stockId }
-        val stockMap = stockRepo.findByIdIn(stockIds).associateBy { it.id }
-        val badgeMap = riskBadgeRepo.findByStockIdIn(stockIds).associateBy { it.stockId }
-        val priceMap = priceRepo.findTop2PerStockByStockIdIn(stockIds).groupBy { it.stockId }
+        val stockMap = stockDao.findByIds(stockIds).associateBy { it.id }
+        val badgeMap = riskBadgeDao.findByStockIds(stockIds).associateBy { it.stockId }
+        val priceMap = priceDao.findTop2PerStock(stockIds, MarketGroup.valueOf(portfolio.marketGroup))
+            .groupBy { it.stockId }
 
         var totalCost = BigDecimal.ZERO
         var totalValue = BigDecimal.ZERO
@@ -70,7 +67,7 @@ class PortfolioService(
             if (value != null) totalValue = totalValue.add(value)
 
             HoldingDetail(
-                id = h.id,
+                id = h.stockId,
                 stockId = h.stockId,
                 symbol = stock?.symbol ?: "?",
                 name = stock?.name ?: "Unknown",
@@ -110,12 +107,11 @@ class PortfolioService(
         )
     }
 
-    @Transactional
     fun buy(portfolioId: Long, userId: UUID, req: BuyRequest): HoldingDetail {
-        val portfolio = verifyOwnership(portfolioId, userId)
+        val (doc, portfolio) = loadOwned(portfolioId, userId)
 
-        val stock = stockRepo.findById(req.stockId)
-            .orElseThrow { ResponseStatusException(HttpStatus.NOT_FOUND, "Stock not found") }
+        val stock = stockDao.findById(req.stockId)
+            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Stock not found")
 
         val isKr = stock.market.isKorean
         if (isKr && portfolio.marketGroup != "KR")
@@ -128,7 +124,7 @@ class PortfolioService(
         val fxRate = if (!isKr) resolved.second else null
         val currency = if (isKr) "KRW" else "USD"
 
-        val existing = holdingRepo.findByPortfolioIdAndStockId(portfolioId, req.stockId)
+        val existing = portfolio.holdings.firstOrNull { it.stockId == req.stockId }
         val holding = if (existing != null) {
             val totalShares = existing.shares.add(req.shares)
             val newAvg = existing.shares.multiply(existing.avgPrice)
@@ -136,10 +132,9 @@ class PortfolioService(
                 .divide(totalShares, 4, RoundingMode.HALF_UP)
 
             if (fxRate != null && existing.purchaseFxRate != null) {
-                val newFx = existing.shares.multiply(existing.purchaseFxRate)
+                existing.purchaseFxRate = existing.shares.multiply(existing.purchaseFxRate)
                     .add(req.shares.multiply(fxRate))
                     .divide(totalShares, 4, RoundingMode.HALF_UP)
-                existing.purchaseFxRate = newFx
             } else if (fxRate != null) {
                 existing.purchaseFxRate = fxRate
             }
@@ -147,24 +142,23 @@ class PortfolioService(
             existing.shares = totalShares
             existing.avgPrice = newAvg
             existing.updatedAt = Instant.now()
-            holdingRepo.save(existing)
+            existing
         } else {
-            holdingRepo.save(
-                PortfolioHolding(
-                    portfolioId = portfolioId,
-                    stockId = req.stockId,
-                    shares = req.shares,
-                    avgPrice = price,
-                    currency = currency,
-                    purchasedAt = req.purchasedAt,
-                    purchaseFxRate = fxRate,
-                    priceSource = if (req.manualPrice != null) "MANUAL" else "AUTO",
-                )
-            )
+            HoldingEntry(
+                stockId = req.stockId,
+                shares = req.shares,
+                avgPrice = price,
+                currency = currency,
+                purchasedAt = req.purchasedAt,
+                purchaseFxRate = fxRate,
+                priceSource = if (req.manualPrice != null) "MANUAL" else "AUTO",
+            ).also { portfolio.holdings.add(it) }
         }
 
+        saveEntry(doc, portfolio)
+
         return HoldingDetail(
-            id = holding.id,
+            id = holding.stockId,
             stockId = holding.stockId,
             symbol = stock.symbol,
             name = stock.name,
@@ -177,65 +171,66 @@ class PortfolioService(
         )
     }
 
-    @Transactional
     fun sell(portfolioId: Long, holdingId: Long, userId: UUID, req: SellRequest) {
-        verifyOwnership(portfolioId, userId)
-        val holding = holdingRepo.findById(holdingId)
-            .orElseThrow { ResponseStatusException(HttpStatus.NOT_FOUND, "Holding not found") }
-        if (holding.portfolioId != portfolioId)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Holding does not belong to this portfolio")
+        val (doc, portfolio) = loadOwned(portfolioId, userId)
+        val holding = findHolding(portfolio, holdingId)
         if (req.sellShares.compareTo(BigDecimal.ZERO) <= 0)
             throw ResponseStatusException(HttpStatus.BAD_REQUEST, "sell_shares must be positive")
 
         val remaining = holding.shares.subtract(req.sellShares)
         when {
-            remaining.compareTo(BigDecimal.ZERO) == 0 -> holdingRepo.delete(holding)
+            remaining.compareTo(BigDecimal.ZERO) == 0 -> portfolio.holdings.remove(holding)
             remaining.compareTo(BigDecimal.ZERO) > 0 -> {
                 holding.shares = remaining
                 holding.updatedAt = Instant.now()
-                holdingRepo.save(holding)
             }
             else -> throw ResponseStatusException(HttpStatus.BAD_REQUEST, "Cannot sell more than owned")
         }
+        saveEntry(doc, portfolio)
     }
 
-    @Transactional
     fun deleteHolding(portfolioId: Long, holdingId: Long, userId: UUID) {
-        verifyOwnership(portfolioId, userId)
-        val holding = holdingRepo.findById(holdingId)
-            .orElseThrow { ResponseStatusException(HttpStatus.NOT_FOUND, "Holding not found") }
-        if (holding.portfolioId != portfolioId)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Holding does not belong to this portfolio")
-        holdingRepo.delete(holding)
+        val (doc, portfolio) = loadOwned(portfolioId, userId)
+        portfolio.holdings.remove(findHolding(portfolio, holdingId))
+        saveEntry(doc, portfolio)
     }
 
-    @Transactional
     fun reset(portfolioId: Long, userId: UUID) {
-        verifyOwnership(portfolioId, userId)
-        holdingRepo.deleteByPortfolioId(portfolioId)
+        val (doc, portfolio) = loadOwned(portfolioId, userId)
+        portfolio.holdings.clear()
+        saveEntry(doc, portfolio)
     }
 
-    fun verifyOwnership(portfolioId: Long, userId: UUID): UserPortfolio {
-        val portfolio = portfolioRepo.findById(portfolioId)
-            .orElseThrow { ResponseStatusException(HttpStatus.NOT_FOUND, "Portfolio not found") }
-        if (portfolio.userId != userId)
-            throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not your portfolio")
-        return portfolio
-    }
+    fun verifyOwnership(portfolioId: Long, userId: UUID): PortfolioEntry = loadOwned(portfolioId, userId).second
 
-    @Transactional
-    fun ensurePortfoliosExist(userId: UUID) {
-        val existing = portfolioRepo.findByUserId(userId)
-        val groups = existing.map { it.marketGroup }.toSet()
-        for (mg in listOf("KR", "US")) {
-            if (mg !in groups) {
-                try {
-                    portfolioRepo.saveAndFlush(UserPortfolio(userId = userId, marketGroup = mg))
-                } catch (_: DataIntegrityViolationException) {
-                    // concurrent creation — UNIQUE constraint handles it
-                }
-            }
+    fun ensurePortfoliosExist(userId: UUID): PortfolioDoc {
+        val doc = portfolioStore.findByUserId(userId) ?: PortfolioDoc(userId)
+        val groups = doc.portfolios.map { it.marketGroup }.toSet()
+        val missing = MARKET_GROUPS.filter { it !in groups }
+        if (missing.isEmpty()) return doc
+
+        missing.forEach {
+            doc.portfolios.add(PortfolioEntry(id = PortfolioStore.portfolioIdOf(userId, it), marketGroup = it))
         }
+        doc.portfolios.sortBy { MARKET_GROUPS.indexOf(it.marketGroup) }
+        portfolioStore.save(doc)
+        return doc
+    }
+
+    private fun loadOwned(portfolioId: Long, userId: UUID): Pair<PortfolioDoc, PortfolioEntry> {
+        val doc = ensurePortfoliosExist(userId)
+        val portfolio = doc.portfolios.firstOrNull { it.id == portfolioId }
+            ?: throw ResponseStatusException(HttpStatus.FORBIDDEN, "Not your portfolio")
+        return doc to portfolio
+    }
+
+    private fun findHolding(portfolio: PortfolioEntry, holdingId: Long): HoldingEntry =
+        portfolio.holdings.firstOrNull { it.stockId == holdingId }
+            ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Holding not found")
+
+    private fun saveEntry(doc: PortfolioDoc, portfolio: PortfolioEntry) {
+        portfolio.updatedAt = Instant.now()
+        portfolioStore.save(doc)
     }
 
     private fun resolvePrice(req: BuyRequest): Pair<BigDecimal, BigDecimal?> {
@@ -268,10 +263,14 @@ class PortfolioService(
         }.toMap().ifEmpty { null }
     }
 
-    private fun UserPortfolio.toSummary() = PortfolioSummary(
+    private fun PortfolioEntry.toSummary() = PortfolioSummary(
         id = id,
         marketGroup = marketGroup,
-        holdingsCount = holdingRepo.countByPortfolioId(id).toInt(),
+        holdingsCount = holdings.size,
         createdAt = createdAt,
     )
+
+    companion object {
+        private val MARKET_GROUPS = listOf("KR", "US")
+    }
 }

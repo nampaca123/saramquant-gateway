@@ -3,12 +3,11 @@ package me.saramquantgateway.feature.recommendation.service
 import com.fasterxml.jackson.databind.ObjectMapper
 import me.saramquantgateway.domain.enum.recommendation.RecommendationDirection
 import me.saramquantgateway.domain.enum.recommendation.RecommendationDirection.*
-import me.saramquantgateway.domain.repository.factor.FactorCovarianceRepository
-import me.saramquantgateway.domain.repository.factor.FactorExposureRepository
-import me.saramquantgateway.domain.repository.fundamental.StockFundamentalRepository
-import me.saramquantgateway.domain.repository.indicator.StockIndicatorRepository
-import me.saramquantgateway.domain.repository.market.SectorAggregateRepository
-import me.saramquantgateway.domain.repository.stock.StockRepository
+import me.saramquantgateway.domain.lake.FactorLakeDao
+import me.saramquantgateway.domain.lake.FundamentalLakeDao
+import me.saramquantgateway.domain.lake.IndicatorLakeDao
+import me.saramquantgateway.domain.lake.SectorLakeDao
+import me.saramquantgateway.domain.lake.StockLakeDao
 import me.saramquantgateway.feature.dashboard.dto.ScreenerFilter
 import me.saramquantgateway.feature.dashboard.service.DashboardService
 import org.springframework.stereotype.Component
@@ -18,12 +17,11 @@ import java.math.RoundingMode
 @Component
 class RecommendationToolExecutor(
     private val dashboardService: DashboardService,
-    private val stockRepo: StockRepository,
-    private val indicatorRepo: StockIndicatorRepository,
-    private val fundamentalRepo: StockFundamentalRepository,
-    private val factorExposureRepo: FactorExposureRepository,
-    private val factorCovRepo: FactorCovarianceRepository,
-    private val sectorAggRepo: SectorAggregateRepository,
+    private val stockDao: StockLakeDao,
+    private val indicatorDao: IndicatorLakeDao,
+    private val fundamentalDao: FundamentalLakeDao,
+    private val factorDao: FactorLakeDao,
+    private val sectorAggDao: SectorLakeDao,
     private val objectMapper: ObjectMapper,
 ) {
     companion object {
@@ -92,7 +90,7 @@ class RecommendationToolExecutor(
         }
 
         val stockIds = items.map { it.stockId }
-        val factors = if (stockIds.isNotEmpty()) factorExposureRepo.findLatestByStockIds(stockIds).associateBy { it.stockId } else emptyMap()
+        val factors = if (stockIds.isNotEmpty()) factorDao.findLatestByStockIds(stockIds).associateBy { it.stockId } else emptyMap()
         val sectorAggs = buildSectorMedians(markets)
 
         val candidates = items.map { s ->
@@ -135,10 +133,10 @@ class RecommendationToolExecutor(
         val stockIds = stocks.map { (it["stock_id"] as Number).toLong() }
         val weights = stocks.map { (it["weight"] as Number).toDouble() }
 
-        val stockEntities = stockRepo.findAllById(stockIds).associateBy { it.id }
-        val factors = factorExposureRepo.findLatestByStockIds(stockIds).associateBy { it.stockId }
-        val indicators = indicatorRepo.findLatestByStockIds(stockIds).associateBy { it.stockId }
-        val fundamentals = fundamentalRepo.findLatestByStockIds(stockIds).associateBy { it.stockId }
+        val stockEntities = stockDao.findByIds(stockIds).associateBy { it.id }
+        val factors = factorDao.findLatestByStockIds(stockIds).associateBy { it.stockId }
+        val indicators = indicatorDao.findLatestByStockIds(stockIds).associateBy { it.stockId }
+        val fundamentals = fundamentalDao.findLatestByStockIds(stockIds).associateBy { it.stockId }
 
         val portFactors = DoubleArray(6)
         stockIds.forEachIndexed { i, id ->
@@ -155,7 +153,7 @@ class RecommendationToolExecutor(
         val firstMarket = stockEntities.values.firstOrNull()?.market
         var estimatedVol: Double? = null
         if (firstMarket != null) {
-            val cov = factorCovRepo.findTop1ByMarketOrderByDateDesc(firstMarket)
+            val cov = factorDao.findLatestCovariance(firstMarket)
             if (cov != null) {
                 val matrix = objectMapper.readValue(cov.matrix, List::class.java) as List<List<Number>>
                 if (matrix.size == 6) {
@@ -258,8 +256,8 @@ class RecommendationToolExecutor(
         val result = mutableMapOf<String, SectorMedian>()
         for (mktStr in markets) {
             val mkt = try { me.saramquantgateway.domain.enum.stock.Market.valueOf(mktStr) } catch (_: Exception) { continue }
-            val latest = sectorAggRepo.findTop1ByMarketOrderByDateDesc(mkt) ?: continue
-            for (s in sectorAggRepo.findByMarketAndDate(mkt, latest.date)) {
+            val latest = sectorAggDao.findLatestByMarket(mkt) ?: continue
+            for (s in sectorAggDao.findByMarketAndDate(mkt, latest.date)) {
                 result[s.sector] = SectorMedian(s.medianPer, s.medianRoe)
             }
         }

@@ -39,5 +39,13 @@ out/
 ### Kotlin ###
 .kotlin
 
+### Terraform ###
+.terraform/
+*.tfstate*
+tfplan
+
 ### Environment Variables ###
 .env
+# Claude Code local settings
+.claude/settings.local.json
+.superpowers/

@@ -2,8 +2,8 @@ package me.saramquantgateway.feature.recommendation.controller
 
 import com.fasterxml.jackson.databind.ObjectMapper
 import me.saramquantgateway.domain.enum.recommendation.RecommendationDirection
-import me.saramquantgateway.domain.repository.recommendation.PortfolioRecommendationRepository
-import me.saramquantgateway.domain.repository.user.UserProfileRepository
+import me.saramquantgateway.domain.store.RecommendationStore
+import me.saramquantgateway.domain.store.UserStore
 import me.saramquantgateway.feature.llm.service.LlmUsageService
 import me.saramquantgateway.feature.portfolio.dto.PortfolioDetail
 import me.saramquantgateway.feature.portfolio.service.PortfolioService
@@ -11,7 +11,6 @@ import me.saramquantgateway.feature.recommendation.dto.RecommendationHistoryItem
 import me.saramquantgateway.feature.recommendation.dto.RecommendationRequest
 import me.saramquantgateway.feature.recommendation.service.RecommendationAgentService
 import org.springframework.beans.factory.annotation.Qualifier
-import org.springframework.data.domain.PageRequest
 import org.springframework.http.MediaType
 import org.springframework.http.ResponseEntity
 import org.springframework.security.core.context.SecurityContextHolder
@@ -26,8 +25,8 @@ class RecommendationController(
     private val agentService: RecommendationAgentService,
     private val usageService: LlmUsageService,
     private val portfolioService: PortfolioService,
-    private val profileRepo: UserProfileRepository,
-    private val recRepo: PortfolioRecommendationRepository,
+    private val userStore: UserStore,
+    private val recStore: RecommendationStore,
     private val objectMapper: ObjectMapper,
     @Qualifier("llmExecutor") private val llmExecutor: Executor,
 ) {
@@ -64,7 +63,7 @@ class RecommendationController(
         }
 
         val portfolio = loadPortfolioOrEmpty(userId, marketGroup)
-        val profile = profileRepo.findByUserId(userId)
+        val profile = userStore.findById(userId)
         val effectiveLang = if (lang in VALID_LANGS) lang else "ko"
         val req = RecommendationRequest(marketGroup, effectiveLang, parsedDirection)
 
@@ -82,9 +81,7 @@ class RecommendationController(
         @RequestParam(defaultValue = "10") size: Int,
     ): ResponseEntity<List<RecommendationHistoryItem>> {
         val userId = currentUserId()
-        val records = recRepo.findByUserIdAndMarketGroupOrderByCreatedAtDesc(
-            userId, marketGroup, PageRequest.of(page, size),
-        )
+        val records = recStore.findPage(userId, marketGroup, page, size)
         val items = records.content.map {
             RecommendationHistoryItem(
                 id = it.id,

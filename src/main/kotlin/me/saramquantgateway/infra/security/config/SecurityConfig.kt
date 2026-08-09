@@ -41,7 +41,8 @@ class SecurityConfig(
             .cors { it.configurationSource(corsSource()) }
             .sessionManagement { it.sessionCreationPolicy(SessionCreationPolicy.STATELESS) }
             .authorizeHttpRequests {
-                it.requestMatchers("/login/oauth2/code/**").permitAll()
+                it.requestMatchers("/healthz").permitAll()
+                    .requestMatchers("/login/oauth2/code/**").permitAll()
                     .requestMatchers("/api/auth/signup", "/api/auth/login").permitAll()
                     .requestMatchers("/api/auth/send-verification", "/api/auth/verify-email").permitAll()
                     .requestMatchers("/api/auth/forgot-password", "/api/auth/reset-password").permitAll()

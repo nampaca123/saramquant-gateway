@@ -4,9 +4,9 @@ import com.anthropic.client.okhttp.AnthropicOkHttpClient
 import com.anthropic.core.JsonValue
 import com.anthropic.models.messages.*
 import com.fasterxml.jackson.databind.ObjectMapper
-import me.saramquantgateway.domain.entity.recommendation.PortfolioRecommendation
-import me.saramquantgateway.domain.entity.user.UserProfile
-import me.saramquantgateway.domain.repository.recommendation.PortfolioRecommendationRepository
+import me.saramquantgateway.domain.document.RecommendationDoc
+import me.saramquantgateway.domain.document.UserDoc
+import me.saramquantgateway.domain.store.RecommendationStore
 import me.saramquantgateway.feature.portfolio.dto.PortfolioDetail
 import me.saramquantgateway.feature.recommendation.dto.*
 import me.saramquantgateway.infra.llm.config.LlmProperties
@@ -25,7 +25,7 @@ class RecommendationAgentService(
     private val toolDefs: RecommendationToolDefinitions,
     private val contextBuilder: RecommendationContextBuilder,
     private val dashboardService: me.saramquantgateway.feature.dashboard.service.DashboardService,
-    private val recRepo: PortfolioRecommendationRepository,
+    private val recStore: RecommendationStore,
     private val props: LlmProperties,
     private val objectMapper: ObjectMapper,
 ) {
@@ -69,7 +69,7 @@ class RecommendationAgentService(
         req: RecommendationRequest,
         portfolio: PortfolioDetail,
         userId: UUID,
-        profile: UserProfile?,
+        profile: UserDoc?,
         emitter: SseEmitter,
     ): Boolean {
         val cancelled = AtomicBoolean(false)
@@ -398,7 +398,7 @@ class RecommendationAgentService(
             }
         }
 
-        recRepo.save(PortfolioRecommendation(
+        recStore.save(RecommendationDoc(
             userId = userId,
             marketGroup = req.marketGroup,
             riskTolerance = "ASSESSED",

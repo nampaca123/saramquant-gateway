@@ -4,12 +4,11 @@ import me.saramquantgateway.domain.entity.factor.FactorExposure
 import me.saramquantgateway.domain.entity.fundamental.StockFundamental
 import me.saramquantgateway.domain.entity.indicator.StockIndicator
 import me.saramquantgateway.domain.enum.stock.Market
-import me.saramquantgateway.domain.repository.factor.FactorCovarianceRepository
-import me.saramquantgateway.domain.repository.factor.FactorExposureRepository
-import me.saramquantgateway.domain.repository.fundamental.StockFundamentalRepository
-import me.saramquantgateway.domain.repository.indicator.StockIndicatorRepository
-import me.saramquantgateway.domain.repository.market.SectorAggregateRepository
-import me.saramquantgateway.domain.repository.stock.StockRepository
+import me.saramquantgateway.domain.lake.FactorLakeDao
+import me.saramquantgateway.domain.lake.FundamentalLakeDao
+import me.saramquantgateway.domain.lake.IndicatorLakeDao
+import me.saramquantgateway.domain.lake.SectorLakeDao
+import me.saramquantgateway.domain.lake.StockLakeDao
 import me.saramquantgateway.feature.portfolio.dto.PortfolioDetail
 import com.fasterxml.jackson.databind.ObjectMapper
 import org.springframework.stereotype.Component
@@ -18,12 +17,11 @@ import java.math.RoundingMode
 
 @Component
 class RecommendationContextBuilder(
-    private val stockRepo: StockRepository,
-    private val indicatorRepo: StockIndicatorRepository,
-    private val fundamentalRepo: StockFundamentalRepository,
-    private val factorExposureRepo: FactorExposureRepository,
-    private val factorCovRepo: FactorCovarianceRepository,
-    private val sectorAggRepo: SectorAggregateRepository,
+    private val stockDao: StockLakeDao,
+    private val indicatorDao: IndicatorLakeDao,
+    private val fundamentalDao: FundamentalLakeDao,
+    private val factorDao: FactorLakeDao,
+    private val sectorAggDao: SectorLakeDao,
     private val objectMapper: ObjectMapper,
 ) {
     companion object {
@@ -54,9 +52,9 @@ class RecommendationContextBuilder(
         if (portfolio.holdings.isEmpty()) return null
 
         val stockIds = portfolio.holdings.map { it.stockId }
-        val indicators = indicatorRepo.findLatestByStockIds(stockIds).associateBy { it.stockId }
-        val fundamentals = fundamentalRepo.findLatestByStockIds(stockIds).associateBy { it.stockId }
-        val factors = factorExposureRepo.findLatestByStockIds(stockIds).associateBy { it.stockId }
+        val indicators = indicatorDao.findLatestByStockIds(stockIds).associateBy { it.stockId }
+        val fundamentals = fundamentalDao.findLatestByStockIds(stockIds).associateBy { it.stockId }
+        val factors = factorDao.findLatestByStockIds(stockIds).associateBy { it.stockId }
 
         val holdingsTable = buildHoldingsTable(portfolio, indicators, fundamentals, factors)
         val riskEvaluation = buildRiskEvaluation(portfolio, stockIds, factors, lang)
@@ -119,11 +117,11 @@ class RecommendationContextBuilder(
             portFactors[5] += (f.leverageZ?.toDouble() ?: 0.0) * w
         }
 
-        val entities = stockRepo.findAllById(stockIds).associateBy { it.id }
+        val entities = stockDao.findByIds(stockIds).associateBy { it.id }
         val firstMarket = entities.values.firstOrNull()?.market
         var estimatedVol: Double? = null
         if (firstMarket != null) {
-            val cov = factorCovRepo.findTop1ByMarketOrderByDateDesc(firstMarket)
+            val cov = factorDao.findLatestCovariance(firstMarket)
             if (cov != null) {
                 val matrix = objectMapper.readValue(cov.matrix, List::class.java) as List<List<Number>>
                 if (matrix.size == 6) {
@@ -170,8 +168,8 @@ class RecommendationContextBuilder(
         sb.appendLine("|--------|---|-----|------|-----|")
 
         for (mkt in markets) {
-            val latest = sectorAggRepo.findTop1ByMarketOrderByDateDesc(mkt) ?: continue
-            for (s in sectorAggRepo.findByMarketAndDate(mkt, latest.date)) {
+            val latest = sectorAggDao.findLatestByMarket(mkt) ?: continue
+            for (s in sectorAggDao.findByMarketAndDate(mkt, latest.date)) {
                 sb.appendLine("| ${s.sector} | ${s.stockCount} | ${fmt(s.medianPer)} | ${fmtPct(s.medianRoe)} | ${fmtPct(s.medianDebtRatio, 0)} |")
             }
         }
