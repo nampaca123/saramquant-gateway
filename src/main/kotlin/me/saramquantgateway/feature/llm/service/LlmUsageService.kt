@@ -1,46 +1,32 @@
 package me.saramquantgateway.feature.llm.service
 
-import me.saramquantgateway.domain.repository.llm.LlmUsageLogRepository
+import me.saramquantgateway.domain.store.LlmUsageStore
 import me.saramquantgateway.feature.llm.dto.LlmUsageResponse
 import me.saramquantgateway.infra.llm.config.LlmProperties
 import org.springframework.stereotype.Service
-import org.springframework.transaction.annotation.Transactional
 import java.time.LocalDate
 import java.util.UUID
 
 @Service
 class LlmUsageService(
-    private val repo: LlmUsageLogRepository,
+    private val store: LlmUsageStore,
     private val props: LlmProperties,
 ) {
-    @Transactional
-    fun checkAndIncrement(userId: UUID): Int {
-        repo.incrementUsage(userId, LocalDate.now())
-        val log = repo.findByUserIdAndUsageDate(userId, LocalDate.now())
-        return log?.count ?: 1
-    }
+    fun checkAndIncrement(userId: UUID): Int = store.incrementBy(userId, LocalDate.now(), 1)
 
-    fun remaining(userId: UUID): LlmUsageResponse {
-        val log = repo.findByUserIdAndUsageDate(userId, LocalDate.now())
-        val used = log?.count ?: 0
-        return LlmUsageResponse(used, props.dailyLimit, LocalDate.now().toString())
-    }
+    fun remaining(userId: UUID): LlmUsageResponse =
+        LlmUsageResponse(store.getCount(userId, LocalDate.now()), props.dailyLimit, LocalDate.now().toString())
 
-    fun isWithinLimit(userId: UUID): Boolean {
-        val log = repo.findByUserIdAndUsageDate(userId, LocalDate.now())
-        return (log?.count ?: 0) < props.dailyLimit
-    }
+    fun isWithinLimit(userId: UUID): Boolean = store.getCount(userId, LocalDate.now()) < props.dailyLimit
 
-    @Transactional
     fun checkAndIncrementBy(userId: UUID, amount: Int): Boolean {
-        val log = repo.findByUserIdAndUsageDate(userId, LocalDate.now())
-        if ((log?.count ?: 0) + amount > props.dailyLimit) return false
-        repo.incrementUsageBy(userId, LocalDate.now(), amount)
+        val today = LocalDate.now()
+        if (store.getCount(userId, today) + amount > props.dailyLimit) return false
+        store.incrementBy(userId, today, amount)
         return true
     }
 
-    @Transactional
     fun decrementBy(userId: UUID, amount: Int) {
-        repo.decrementUsageBy(userId, LocalDate.now(), amount)
+        store.decrementBy(userId, LocalDate.now(), amount)
     }
 }

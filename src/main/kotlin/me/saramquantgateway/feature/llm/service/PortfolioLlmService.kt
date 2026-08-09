@@ -1,23 +1,22 @@
 package me.saramquantgateway.feature.llm.service
 
 import me.saramquantgateway.domain.document.HoldingEntry
-import me.saramquantgateway.domain.entity.llm.PortfolioLlmAnalysis
+import me.saramquantgateway.domain.document.LlmAnalysisDoc
 import me.saramquantgateway.domain.enum.market.Country
 import me.saramquantgateway.domain.enum.market.Maturity
 import me.saramquantgateway.domain.repository.fundamental.StockFundamentalRepository
 import me.saramquantgateway.domain.repository.indicator.StockIndicatorRepository
-import me.saramquantgateway.domain.repository.llm.PortfolioLlmAnalysisRepository
 import me.saramquantgateway.domain.repository.market.RiskFreeRateRepository
 import me.saramquantgateway.domain.repository.market.SectorAggregateRepository
 import me.saramquantgateway.domain.repository.riskbadge.RiskBadgeRepository
 import me.saramquantgateway.domain.repository.stock.StockRepository
+import me.saramquantgateway.domain.store.LlmCacheStore
 import me.saramquantgateway.feature.llm.dto.LlmAnalysisResponse
 import me.saramquantgateway.feature.portfolio.service.PortfolioService
 import me.saramquantgateway.infra.llm.config.LlmProperties
 import me.saramquantgateway.infra.llm.lib.LlmRouter
 import me.saramquantgateway.infra.connection.CalcServerClient
 import org.springframework.beans.factory.annotation.Qualifier
-import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.stereotype.Service
 import java.math.BigDecimal
 import java.time.LocalDate
@@ -36,7 +35,7 @@ class PortfolioLlmService(
     private val badgeRepo: RiskBadgeRepository,
     private val sectorAggRepo: SectorAggregateRepository,
     private val riskFreeRateRepo: RiskFreeRateRepository,
-    private val analysisRepo: PortfolioLlmAnalysisRepository,
+    private val cacheStore: LlmCacheStore,
     private val calcClient: CalcServerClient,
     private val promptBuilder: PromptBuilder,
     private val llmRouter: LlmRouter,
@@ -57,7 +56,7 @@ class PortfolioLlmService(
 
         val today = LocalDate.now()
 
-        analysisRepo.findByPortfolioIdAndDateAndPresetAndLang(portfolioId, today, preset, lang)?.let {
+        cacheStore.findPortfolio(portfolioId, today, preset, lang)?.let {
             return LlmAnalysisResponse(it.analysis, it.model, true, LlmAnalysisResponse.disclaimer(lang))
         }
 
@@ -85,16 +84,12 @@ class PortfolioLlmService(
         val (system, user) = promptBuilder.buildPortfolioPrompt(data, preset, lang)
         val result = llmRouter.complete(props.portfolioModel, system, user)
 
-        try {
-            analysisRepo.save(
-                PortfolioLlmAnalysis(
-                    portfolioId = portfolioId, date = today, preset = preset, lang = lang,
-                    analysis = result, model = props.portfolioModel,
-                )
+        cacheStore.savePortfolio(
+            LlmAnalysisDoc(
+                targetId = portfolioId, date = today, preset = preset, lang = lang,
+                analysis = result, model = props.portfolioModel,
             )
-        } catch (_: DataIntegrityViolationException) {
-            // race condition: 동시 요청이 먼저 INSERT 완료한 경우 → 무시하고 결과만 반환
-        }
+        )
         return result
     }
 

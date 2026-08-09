@@ -6,7 +6,6 @@ import me.saramquantgateway.domain.enum.fundamental.ReportType
 import me.saramquantgateway.domain.enum.market.Country
 import me.saramquantgateway.domain.enum.market.Maturity
 import me.saramquantgateway.domain.enum.stock.Market
-import me.saramquantgateway.domain.repository.llm.StockLlmAnalysisRepository
 import me.saramquantgateway.domain.repository.factor.FactorExposureRepository
 import me.saramquantgateway.domain.repository.fundamental.FinancialStatementRepository
 import me.saramquantgateway.domain.repository.fundamental.StockFundamentalRepository
@@ -16,13 +15,13 @@ import me.saramquantgateway.domain.repository.market.SectorAggregateRepository
 import me.saramquantgateway.domain.repository.riskbadge.RiskBadgeRepository
 import me.saramquantgateway.domain.repository.stock.DailyPriceRepository
 import me.saramquantgateway.domain.repository.stock.StockRepository
-import me.saramquantgateway.domain.entity.llm.StockLlmAnalysis
+import me.saramquantgateway.domain.document.LlmAnalysisDoc
+import me.saramquantgateway.domain.store.LlmCacheStore
 import me.saramquantgateway.feature.llm.dto.LlmAnalysisResponse
 import me.saramquantgateway.feature.stock.dto.*
 import me.saramquantgateway.infra.llm.config.LlmProperties
 import me.saramquantgateway.infra.llm.lib.LlmRouter
 import org.springframework.beans.factory.annotation.Qualifier
-import org.springframework.dao.DataIntegrityViolationException
 import org.springframework.http.HttpStatus
 import org.springframework.stereotype.Service
 import org.springframework.web.server.ResponseStatusException
@@ -36,7 +35,7 @@ import java.util.concurrent.TimeUnit
 
 @Service
 class StockLlmService(
-    private val analysisRepo: StockLlmAnalysisRepository,
+    private val cacheStore: LlmCacheStore,
     private val stockRepo: StockRepository,
     private val priceRepo: DailyPriceRepository,
     private val indicatorRepo: StockIndicatorRepository,
@@ -55,7 +54,7 @@ class StockLlmService(
 
     fun getCached(symbol: String, market: Market, preset: String, lang: String): LlmAnalysisResponse? {
         val stock = stockRepo.findBySymbolAndMarketAndIsActiveTrue(symbol, market) ?: return null
-        val cached = analysisRepo.findByStockIdAndDateAndPresetAndLang(stock.id, LocalDate.now(), preset, lang)
+        val cached = cacheStore.findStock(stock.id, LocalDate.now(), preset, lang)
             ?: return null
         return toResponse(cached, true)
     }
@@ -65,7 +64,7 @@ class StockLlmService(
             ?: throw ResponseStatusException(HttpStatus.NOT_FOUND, "Stock not found")
         val today = LocalDate.now()
 
-        analysisRepo.findByStockIdAndDateAndPresetAndLang(stock.id, today, preset, lang)?.let {
+        cacheStore.findStock(stock.id, today, preset, lang)?.let {
             return toResponse(it, true)
         }
 
@@ -87,15 +86,12 @@ class StockLlmService(
         val (system, user) = promptBuilder.buildStockPrompt(data, preset, lang)
         val result = llmRouter.complete(props.stockModel, system, user)
 
-        try {
-            analysisRepo.save(
-                StockLlmAnalysis(
-                    stockId = stock.id, date = today, preset = preset, lang = lang,
-                    analysis = result, model = props.stockModel,
-                )
+        cacheStore.saveStock(
+            LlmAnalysisDoc(
+                targetId = stock.id, date = today, preset = preset, lang = lang,
+                analysis = result, model = props.stockModel,
             )
-        } catch (_: DataIntegrityViolationException) {
-        }
+        )
         return result
     }
 
@@ -216,11 +212,11 @@ class StockLlmService(
         private val BD_100 = BigDecimal(100)
     }
 
-    private fun toResponse(entity: StockLlmAnalysis, cached: Boolean): LlmAnalysisResponse =
+    private fun toResponse(doc: LlmAnalysisDoc, cached: Boolean): LlmAnalysisResponse =
         LlmAnalysisResponse(
-            analysis = entity.analysis,
-            model = entity.model,
+            analysis = doc.analysis,
+            model = doc.model,
             cached = cached,
-            disclaimer = LlmAnalysisResponse.disclaimer(entity.lang),
+            disclaimer = LlmAnalysisResponse.disclaimer(doc.lang),
         )
 }

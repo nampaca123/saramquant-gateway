@@ -1,6 +1,6 @@
 package me.saramquantgateway.feature.portfolio.controller
 
-import me.saramquantgateway.domain.repository.llm.PortfolioLlmAnalysisRepository
+import me.saramquantgateway.domain.store.LlmCacheStore
 import me.saramquantgateway.feature.portfolio.dto.BuyRequest
 import me.saramquantgateway.feature.portfolio.dto.SellRequest
 import me.saramquantgateway.feature.portfolio.service.PortfolioService
@@ -16,7 +16,7 @@ import java.util.UUID
 class PortfolioController(
     private val portfolioService: PortfolioService,
     private val calcClient: CalcServerClient,
-    private val llmCacheRepo: PortfolioLlmAnalysisRepository,
+    private val llmCacheStore: LlmCacheStore,
 ) {
 
     @GetMapping
@@ -93,7 +93,7 @@ class PortfolioController(
     fun llmHistory(@PathVariable id: Long): ResponseEntity<Any> {
         val userId = currentUserId()
         portfolioService.verifyOwnership(id, userId)
-        val rows = llmCacheRepo.findByPortfolioIdOrderByCreatedAtDesc(id)
+        val rows = llmCacheStore.listPortfolioHistory(id)
         return ResponseEntity.ok(rows.map { mapOf(
             "id" to it.id,
             "date" to it.date,

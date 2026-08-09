@@ -3,7 +3,7 @@ package me.saramquantgateway.feature.stock.service
 import me.saramquantgateway.domain.enum.market.Benchmark
 import me.saramquantgateway.domain.enum.stock.Market
 import me.saramquantgateway.domain.enum.stock.PricePeriod
-import me.saramquantgateway.domain.repository.llm.StockLlmAnalysisRepository
+import me.saramquantgateway.domain.store.LlmCacheStore
 import me.saramquantgateway.domain.repository.factor.FactorExposureRepository
 import me.saramquantgateway.domain.repository.fundamental.StockFundamentalRepository
 import me.saramquantgateway.domain.repository.indicator.StockIndicatorRepository
@@ -29,7 +29,7 @@ class StockService(
     private val riskBadgeRepo: RiskBadgeRepository,
     private val sectorAggRepo: SectorAggregateRepository,
     private val factorRepo: FactorExposureRepository,
-    private val llmRepo: StockLlmAnalysisRepository,
+    private val llmCacheStore: LlmCacheStore,
     private val benchmarkPriceRepo: BenchmarkDailyPriceRepository,
 ) {
 
@@ -53,7 +53,7 @@ class StockService(
         val badge = riskBadgeRepo.findByStockId(stock.id)
         val sectorAgg = stock.sector?.let { sectorAggRepo.findTop1ByMarketAndSectorOrderByDateDesc(market, it) }
         val factor = factorRepo.findTop1ByStockIdOrderByDateDesc(stock.id)
-        val llm = llmRepo.findByStockIdAndDateAndPresetAndLang(stock.id, LocalDate.now(), "summary", lang)
+        val llm = llmCacheStore.findStock(stock.id, LocalDate.now(), "summary", lang)
 
         return StockDetailResponse(
             header = StockHeader(
