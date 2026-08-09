@@ -73,7 +73,7 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
         with:
-          terraform_version: 1.13.3
+          terraform_version: 1.15.8
           terraform_wrapper: false
 
       - name: Cache Terraform providers
