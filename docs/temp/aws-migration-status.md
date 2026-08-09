@@ -23,7 +23,22 @@
 - [x] T13 Terraform
 - [x] T14 deploy.yml + GH 변수
 - [x] T15 가이드 문서
-- [ ] T16 최종 리뷰→배포→완주
+- [x] T16 최종 리뷰→배포→완주
+
+## 배포 완주 결과 (T16, 2026-08-10)
+
+- PR #1 머지 → main 배포 워크플로 성공 (arm64 이미지 빌드·push, terraform apply 전체 그린)
+- **EIP: `54.116.55.252`** (instance i-0238baf595c44239f, ECS steady state, gateway 컨테이너 HEALTHY)
+- CloudWatch `/saramquant/gateway`: 부팅 10.5초, ERROR 0건
+- 배포 환경 검증 (SSM 경유 인스턴스 내부 curl + 외부 80포트):
+  healthz 200 / sectors·stocks(실데이터)·freshness·home 200 / 인증헤더 누락 403 /
+  send-verification 200(SES 실발송) / 미인증 signup 403 / http→https 308(caddy 정상)
+- 공개 HTTPS(`https://api.saramquant.com`) 검증은 NameCheap A레코드 등록 후 가능
+
+## 최종 리뷰 잔여 사항 (파킹/마이너, 후속 참고)
+
+- 파킹: PR CI가 실버킷 `app-test/` 프리픽스로 통합 테스트 수행(설계상 승인), 방문 통계 의미 축소(geolocation 제거에 따른 수용)
+- 마이너: audit 일자 존재 확인 listKeys 비효율, fundamentals 글로벌 max(date) 앵커(마켓 간 10일 이상 적재 시차 시 공백), UserStore 포인터 reclaim TOCTOU, DuckDB 404 마커 광범위 매치, 관리자 로그 기본 조회 범위 전체→90일 변경(캡 92일)
 
 ## 로컬 검증 결과 (T11, 2026-08-10)
 
