@@ -73,6 +73,7 @@ jobs:
 
       - uses: hashicorp/setup-terraform@v3
         with:
+          terraform_version: 1.13.3
           terraform_wrapper: false
 
       - name: Cache Terraform providers
@@ -99,7 +100,7 @@ jobs:
       # Dockerfile만 해싱하면 src 변경이 태그에 안 잡혀 새 코드가 영구 미배포된다
       - name: Compute image tag
         run: |
-          TAG=$(echo "${{ hashFiles('Dockerfile', 'build.gradle.kts', 'settings.gradle.kts', 'src/**') }}" | cut -c1-12)
+          TAG=$(echo "${{ hashFiles('Dockerfile', 'build.gradle.kts', 'settings.gradle.kts', 'src/main/**') }}" | cut -c1-12)
           echo "IMAGE_TAG=$TAG" >> "$GITHUB_ENV"
           echo "TF_VAR_image_tag=$TAG" >> "$GITHUB_ENV"
 

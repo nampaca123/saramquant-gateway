@@ -14,9 +14,9 @@ resource "aws_ecs_task_definition" "gateway" {
   requires_compatibilities = ["EC2"]
   execution_role_arn       = aws_iam_role.task_exec.arn
 
-  volume {
-    name      = "duckdb-ext"
-    host_path = local.duckdb_ext_dir
+  runtime_platform {
+    cpu_architecture        = "ARM64"
+    operating_system_family = "LINUX"
   }
 
   volume {
@@ -24,6 +24,7 @@ resource "aws_ecs_task_definition" "gateway" {
     host_path = "/caddy-data"
   }
 
+  # Memory budget within the 1280MB hard limit: JVM heap 640MB + DuckDB 384MB + ~200MB native.
   container_definitions = jsonencode([
     {
       name      = "gateway"
@@ -37,17 +38,20 @@ resource "aws_ecs_task_definition" "gateway" {
         protocol      = "tcp"
       }]
 
-      mountPoints = [{
-        sourceVolume  = "duckdb-ext"
-        containerPath = local.duckdb_ext_dir
-        readOnly      = false
-      }]
+      healthCheck = {
+        command     = ["CMD-SHELL", "curl -fsS http://localhost:8080/healthz || exit 1"]
+        interval    = 30
+        timeout     = 5
+        retries     = 3
+        startPeriod = 90
+      }
 
       environment = [
         { name = "AWS_REGION", value = var.region },
         { name = "SARAMQUANT_S3_BUCKET_NAME", value = var.s3_bucket_name },
         { name = "GLUE_DATABASE", value = var.glue_database },
         { name = "DUCKDB_EXT_DIR", value = local.duckdb_ext_dir },
+        { name = "DUCKDB_MEMORY_LIMIT", value = "384MB" },
         { name = "GOOGLE_OAUTH_CLIENT_ID", value = var.google_oauth_client_id },
         { name = "GOOGLE_OAUTH_REDIRECT_URI", value = var.google_oauth_redirect_uri },
         { name = "KAKAO_OAUTH_REST_KEY", value = var.kakao_oauth_rest_key },
@@ -108,7 +112,7 @@ resource "aws_ecs_task_definition" "gateway" {
 
       dependsOn = [{
         containerName = "gateway"
-        condition     = "START"
+        condition     = "HEALTHY"
       }]
 
       logConfiguration = {
@@ -132,6 +136,7 @@ resource "aws_ecs_service" "gateway" {
 
   deployment_minimum_healthy_percent = 0
   deployment_maximum_percent         = 100
+  wait_for_steady_state              = true
 
   depends_on = [aws_instance.gateway]
 }

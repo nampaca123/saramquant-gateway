@@ -101,22 +101,22 @@ variable "jwt_public_key_base64" {
 }
 
 variable "jwt_access_token_ttl" {
-  description = "Access token TTL as understood by the app (e.g. 3600000)."
+  description = "Access token TTL in seconds (e.g. 900). Access tokens are stateless and cannot be revoked."
   type        = string
 
   validation {
-    condition     = length(var.jwt_access_token_ttl) > 0
-    error_message = "jwt_access_token_ttl must be non-empty. Set GitHub Variable JWT_ACCESS_TOKEN_TTL."
+    condition     = can(tonumber(var.jwt_access_token_ttl)) && tonumber(var.jwt_access_token_ttl) > 0 && tonumber(var.jwt_access_token_ttl) <= 3600
+    error_message = "jwt_access_token_ttl must be seconds in (0, 3600]. Set GitHub Variable JWT_ACCESS_TOKEN_TTL (e.g. 900)."
   }
 }
 
 variable "jwt_refresh_token_ttl" {
-  description = "Refresh token TTL as understood by the app."
+  description = "Refresh token TTL in seconds (e.g. 604800)."
   type        = string
 
   validation {
-    condition     = length(var.jwt_refresh_token_ttl) > 0
-    error_message = "jwt_refresh_token_ttl must be non-empty. Set GitHub Variable JWT_REFRESH_TOKEN_TTL."
+    condition     = can(tonumber(var.jwt_refresh_token_ttl)) && tonumber(var.jwt_refresh_token_ttl) > 0
+    error_message = "jwt_refresh_token_ttl must be a positive number of seconds. Set GitHub Variable JWT_REFRESH_TOKEN_TTL (e.g. 604800)."
   }
 }
 

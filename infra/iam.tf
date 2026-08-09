@@ -56,10 +56,21 @@ resource "aws_iam_role_policy" "instance_app" {
     Version = "2012-10-17"
     Statement = [
       {
+        Sid      = "LocateLakeBucket"
+        Effect   = "Allow"
+        Action   = ["s3:GetBucketLocation"]
+        Resource = "arn:aws:s3:::${var.s3_bucket_name}"
+      },
+      {
         Sid      = "ListLakeBucket"
         Effect   = "Allow"
-        Action   = ["s3:ListBucket", "s3:GetBucketLocation"]
+        Action   = ["s3:ListBucket"]
         Resource = "arn:aws:s3:::${var.s3_bucket_name}"
+        Condition = {
+          StringLike = {
+            "s3:prefix" = ["app/*", "warehouse/*", "run-summary/*"]
+          }
+        }
       },
       {
         Sid    = "ReadWriteAppObjects"
@@ -88,13 +99,6 @@ resource "aws_iam_role_policy" "instance_app" {
         Action   = ["glue:GetDatabase", "glue:GetTable"]
         Resource = local.glue_arns
       },
-      {
-        Sid      = "ReadGatewayParameters"
-        Effect   = "Allow"
-        Action   = ["ssm:GetParameter", "ssm:GetParameters"]
-        Resource = local.ssm_gateway_params_arn
-      },
-      local.kms_decrypt_via_ssm,
     ]
   })
 }

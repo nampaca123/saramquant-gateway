@@ -24,7 +24,7 @@ resource "aws_instance" "gateway" {
   user_data = <<-EOT
     #!/bin/bash
     echo "ECS_CLUSTER=${local.cluster_name}" >> /etc/ecs/ecs.config
-    mkdir -p ${local.duckdb_ext_dir} /caddy-data
+    mkdir -p /caddy-data
   EOT
 
   tags = {

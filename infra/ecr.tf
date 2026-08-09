@@ -8,11 +8,11 @@ resource "aws_ecr_lifecycle_policy" "gateway" {
   policy = jsonencode({
     rules = [{
       rulePriority = 1
-      description  = "Keep only the 3 most recent images."
+      description  = "Keep only the 10 most recent images so documented rollbacks stay possible."
       selection = {
         tagStatus   = "any"
         countType   = "imageCountMoreThan"
-        countNumber = 3
+        countNumber = 10
       }
       action = {
         type = "expire"
