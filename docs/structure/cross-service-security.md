@@ -265,5 +265,5 @@ Railway Private Networking은 같은 프로젝트 내라면 **리전이 달라�
 | `JWT_PUBLIC_KEY_BASE64` | Gateway | JWT 검증 (RS256) |
 | `HASH_SECRET` | Gateway | AES/HMAC 키 파생 원본 |
 | `COOKIE_SECURE` | Gateway | 쿠키 Secure 플래그 |
-| `COOKIE_DOMAIN` | Gateway | 쿠키 Domain (`.saramquant.com`, 비우면 host-only) |
+| `COOKIE_DOMAIN` | Gateway | 쿠키 Domain (`saramquant.com` — 선행 점 금지, RFC 6265/Tomcat이 거부. 비우면 host-only) |
 | `CORS_ALLOWED_ORIGIN` | Gateway | CORS 허용 Origin |
