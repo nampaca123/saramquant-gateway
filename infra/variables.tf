@@ -130,6 +130,16 @@ variable "cookie_secure" {
   }
 }
 
+variable "cookie_domain" {
+  description = "Domain attribute for auth cookies (e.g. .saramquant.com to share across api/www)."
+  type        = string
+
+  validation {
+    condition     = length(var.cookie_domain) > 0
+    error_message = "cookie_domain must be non-empty. Set GitHub Variable COOKIE_DOMAIN (e.g. .saramquant.com)."
+  }
+}
+
 variable "frontend_redirect_url" {
   description = "Frontend URL users land on after OAuth login."
   type        = string

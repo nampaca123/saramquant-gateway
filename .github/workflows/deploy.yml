@@ -36,6 +36,7 @@ jobs:
       TF_VAR_jwt_access_token_ttl: ${{ vars.JWT_ACCESS_TOKEN_TTL }}
       TF_VAR_jwt_refresh_token_ttl: ${{ vars.JWT_REFRESH_TOKEN_TTL }}
       TF_VAR_cookie_secure: ${{ vars.COOKIE_SECURE }}
+      TF_VAR_cookie_domain: ${{ vars.COOKIE_DOMAIN }}
       TF_VAR_frontend_redirect_url: ${{ vars.FRONTEND_REDIRECT_URL }}
       TF_VAR_cors_allowed_origin: ${{ vars.CORS_ALLOWED_ORIGIN }}
       TF_VAR_calc_server_url: ${{ vars.CALC_SERVER_URL }}
