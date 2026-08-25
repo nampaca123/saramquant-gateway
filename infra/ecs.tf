@@ -60,6 +60,7 @@ resource "aws_ecs_task_definition" "gateway" {
         { name = "JWT_ACCESS_TOKEN_TTL", value = var.jwt_access_token_ttl },
         { name = "JWT_REFRESH_TOKEN_TTL", value = var.jwt_refresh_token_ttl },
         { name = "COOKIE_SECURE", value = var.cookie_secure },
+        { name = "COOKIE_DOMAIN", value = var.cookie_domain },
         { name = "FRONTEND_REDIRECT_URL", value = var.frontend_redirect_url },
         { name = "CORS_ALLOWED_ORIGIN", value = var.cors_allowed_origin },
         { name = "CALC_SERVER_URL", value = var.calc_server_url },
