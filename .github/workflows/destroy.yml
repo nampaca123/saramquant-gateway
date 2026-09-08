@@ -1,0 +1,99 @@
+# AWS 리소스 회수 전용 워크플로. 수동 실행 + confirm 입력이 있어야만 동작한다.
+name: destroy
+
+on:
+  workflow_dispatch:
+    inputs:
+      confirm:
+        description: 'Type "destroy" to confirm teardown'
+        required: true
+        type: string
+
+# 공유 S3 state 락 충돌 방지 — 진행 중 destroy는 절대 취소하지 않는다
+concurrency:
+  group: terraform-state-gateway
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  destroy:
+    if: inputs.confirm == 'destroy'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra
+    env:
+      AWS_REGION: ap-northeast-2
+      TF_VAR_region: ap-northeast-2
+      TF_VAR_caddy_domain: ${{ vars.CADDY_DOMAIN }}
+      TF_VAR_s3_bucket_name: ${{ vars.SARAMQUANT_S3_BUCKET_NAME }}
+      TF_VAR_glue_database: ${{ vars.GLUE_DATABASE }}
+      TF_VAR_google_oauth_client_id: ${{ vars.GOOGLE_OAUTH_CLIENT_ID }}
+      TF_VAR_google_oauth_redirect_uri: ${{ vars.GOOGLE_OAUTH_REDIRECT_URI }}
+      TF_VAR_kakao_oauth_rest_key: ${{ vars.KAKAO_OAUTH_REST_KEY }}
+      TF_VAR_kakao_oauth_redirect_uri: ${{ vars.KAKAO_OAUTH_REDIRECT_URI }}
+      TF_VAR_jwt_public_key_base64: ${{ vars.JWT_PUBLIC_KEY_BASE64 }}
+      TF_VAR_jwt_access_token_ttl: ${{ vars.JWT_ACCESS_TOKEN_TTL }}
+      TF_VAR_jwt_refresh_token_ttl: ${{ vars.JWT_REFRESH_TOKEN_TTL }}
+      TF_VAR_cookie_secure: ${{ vars.COOKIE_SECURE }}
+      TF_VAR_cookie_domain: ${{ vars.COOKIE_DOMAIN }}
+      TF_VAR_frontend_redirect_url: ${{ vars.FRONTEND_REDIRECT_URL }}
+      TF_VAR_cors_allowed_origin: ${{ vars.CORS_ALLOWED_ORIGIN }}
+      TF_VAR_calc_server_url: ${{ vars.CALC_SERVER_URL }}
+      TF_VAR_aws_ses_region: ${{ vars.AWS_SES_REGION }}
+      TF_VAR_aws_ses_sender_email: ${{ vars.AWS_SES_SENDER_EMAIL }}
+      TF_VAR_google_oauth_client_secret: ${{ secrets.GOOGLE_OAUTH_CLIENT_SECRET }}
+      TF_VAR_kakao_oauth_login_secret: ${{ secrets.KAKAO_OAUTH_LOGIN_SECRET }}
+      TF_VAR_jwt_private_key_base64: ${{ secrets.JWT_PRIVATE_KEY_BASE64 }}
+      TF_VAR_hash_secret: ${{ secrets.HASH_SECRET }}
+      TF_VAR_gateway_auth_key: ${{ secrets.GATEWAY_AUTH_KEY }}
+      TF_VAR_calc_auth_key: ${{ secrets.CALC_AUTH_KEY }}
+      TF_VAR_claude_api_key: ${{ secrets.CLAUDE_API_KEY }}
+      TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+      TF_VAR_aws_ses_access_key: ${{ secrets.AWS_SES_ACCESS_KEY }}
+      TF_VAR_aws_ses_secret_key: ${{ secrets.AWS_SES_SECRET_KEY }}
+      # 파괴만 하므로 이미지 태그 실값은 불필요 — validation(length > 0)만 통과시킨다
+      TF_VAR_image_tag: destroy
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.15.8
+          terraform_wrapper: false
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.SARAMQUANT_IAM_KEY_ACCESS }}
+          aws-secret-access-key: ${{ secrets.SARAMQUANT_IAM_KEY_SECRET }}
+          aws-region: ap-northeast-2
+
+      - name: Verify identity
+        run: aws sts get-caller-identity
+
+      - name: Terraform init
+        run: ./tf init -reconfigure -input=false
+
+      - name: State before
+        run: ./tf state list
+
+      # ECR 리포지토리에 force_delete가 없어 이미지가 남아 있으면 destroy가 실패한다
+      - name: Empty ECR repository
+        run: |
+          set -euo pipefail
+          ids=$(aws ecr list-images --repository-name saramquant-gateway --query 'imageIds[*]' --output json 2>/dev/null || echo '[]')
+          if [ "$ids" != "[]" ]; then
+            aws ecr batch-delete-image --repository-name saramquant-gateway --image-ids "$ids" >/dev/null
+            echo "emptied saramquant-gateway"
+          else
+            echo "saramquant-gateway already empty or absent"
+          fi
+
+      - name: Terraform plan (destroy)
+        run: ./tf plan -destroy -input=false -out=tfdestroy
+
+      - name: Terraform destroy
+        run: ./tf apply -input=false tfdestroy
